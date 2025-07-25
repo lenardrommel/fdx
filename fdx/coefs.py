@@ -1,5 +1,6 @@
 import math
 from itertools import combinations
+
 from jax import numpy as jnp
 
 from fdx.config import _dtype
@@ -46,6 +47,7 @@ def coefficients(deriv, acc=None, offsets=None, symbolic=False, analytic_inv=Fal
 
     return ret
 
+
 def compute_coeffs(deriv, offsets, analytic_inv=False):
     if analytic_inv:
         coefs = compute_inverse_Vandermonde(deriv, offsets)
@@ -53,10 +55,11 @@ def compute_coeffs(deriv, offsets, analytic_inv=False):
         mat = _build_matrix(offsets)
         rhs = _build_rhs(offsets, deriv)
         coefs = jnp.linalg.solve(mat, rhs)
-    
+
     acc = _calc_accuracy(offsets, coefs, deriv)
     offsets = jnp.array(offsets, dtype=jnp.int32)
     return {"coefficients": coefs, "offsets": offsets, "accuracy": acc}
+
 
 def compute_inverse_Vandermonde(column, offsets, dtype=_dtype):
     take = lambda arr, ids: arr[jnp.array(ids)]  # noqa: E731
@@ -65,7 +68,7 @@ def compute_inverse_Vandermonde(column, offsets, dtype=_dtype):
 
     def minus(x, arr):
         return x - arr
-    
+
     n = len(offsets)
     k = column + 1
     inv_vandermonde_column = []
@@ -89,7 +92,7 @@ def compute_inverse_Vandermonde(column, offsets, dtype=_dtype):
             enumerator = sum(prod(take(offsets, list(m))) for m in index_set)
             denominator = prod(minus(offsets[j], take(offsets, range_wo_j)))
             inv_vandermonde_column.append(sign * enumerator / denominator)
-    
+
     return jnp.array(inv_vandermonde_column, dtype=dtype) * math.factorial(column)
 
 
@@ -101,12 +104,14 @@ def _build_matrix(offsets, dtype=_dtype):
         A.append([j**i for j in offsets])
     return jnp.array(A, dtype=dtype)
 
+
 def _build_rhs(offsets, deriv, dtype=_dtype):
     """The right hand side of the equation system matrix"""
     b = [0 for _ in offsets]
     b[deriv] = math.factorial(deriv)
 
     return jnp.array(b, dtype=dtype)
+
 
 def _calc_accuracy(offsets, coefs, deriv):
     n = deriv + 1

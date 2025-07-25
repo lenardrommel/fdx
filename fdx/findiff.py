@@ -1,6 +1,9 @@
 from jax import numpy as jnp
 from jax.scipy import sparse
 
+from fdx.coefs import coefficients, compute_coeffs
+from fdx.utils import get_long_indices_for_all_grid_points_as_ndarray, to_long_index
+
 
 class FinDiffBase:
     def __init__(self, axis, order):
@@ -47,4 +50,101 @@ class FinDiffBase:
     
     def matrix(self, shape):
         siz = jnp.prod(shape)
-        mat = 
+        mat = jnp.zeros((siz, siz))
+        self.write_matrix_entries(mat, shape)
+        return mat
+
+
+    def write_matrix_entries(self, mat, shape):
+        raise NotImplementedError
+    
+
+class FinDiffUniform(FinDiffBase):
+    def __init__(self, axis, order, spacing, acc):
+        super().__init__(axis, order)
+        self.spacing = spacing
+        self.acc = acc
+        coef_schemes = coefficients(self.order, acc)
+        self.forward = coef_schemes["forward"]
+        self.backward = coef_schemes["backward"]
+        self.center = coef_schemes["center"]
+    
+    def __call__(self, f):
+        f = self.guard_valid_target(f)
+        npts = f.shape[self.axis]
+        fd = jnp.zeros_like(f)
+        num_bndry_points = len(self.center["coefficients"]) // 2
+
+        self._apply_central_coefs(f, fd, npts, num_bndry_points)
+
+        self._apply_forward_coefs(f, fd, npts, num_bndry_points)
+
+        self._apply_backward_coefs(f, fd, npts, num_bndry_points)
+
+        h_inv = 1.0 / self.spacing**self.order
+        return fd * h_inv
+    
+    def _apply_backward_coefs(self, f, fd, npts, num_bndry_points):
+        weights = self.backward["coefficients"]
+        offsets = self.backward["offsets"]
+        ref_slice = slice(npts - num_bndry_points, npts, 1)
+        off_slices = [
+            self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
+        ]
+        self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+
+    def _apply_forward_coefs(self, f, fd, npts, num_bndry_points):
+        weights = self.forward["coefficients"]
+        offsets = self.forward["offsets"]
+        ref_slice = slice(0, num_bndry_points, 1)
+        off_slices = [
+            self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
+        ]
+        self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+
+    def _apply_central_coefs(self, f, fd, npts, num_bndry_points):
+        weights = self.center["coefficients"]
+        offsets = self.center["offsets"]
+        ref_slice = slice(num_bndry_points, npts - num_bndry_points, 1)
+        off_slices = [
+            self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
+        ]
+        self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+
+    def write_matrix_entries(self, mat, shape):
+        long_indices_nd = get_long_indices_for_all_grid_points_as_ndarray(shape)
+        for scheme in ["center", "forward", "backward"]:
+
+            offsets_long = self._convert_1D_offsets_to_long_indices(
+                self.axis, getattr(self, scheme)["offsets"], shape
+            )
+
+            multi_slice = self._get_multislice_for_scheme(self.axis, scheme, shape)
+            Is = long_indices_nd[tuple(multi_slice)].reshape(-1)
+
+            coefs = getattr(self, scheme)["coefficients"]
+            for o, c in zip(offsets_long, coefs):
+                v = c / self.spacing**self.order
+                mat[Is, Is + o] = v
+
+    def _get_multislice_for_scheme(self, axis, scheme, shape):
+        ndims = len(shape)
+        multi_slice = [slice(None, None)] * ndims
+        nside = len(self.center["coefficients"]) // 2
+        if scheme == "center":
+            multi_slice[axis] = slice(nside, -nside)
+        elif scheme == "forward":
+            multi_slice[axis] = slice(0, nside)
+        else:
+            multi_slice[axis] = slice(-nside, None)
+        return multi_slice
+
+    def _convert_1D_offsets_to_long_indices(self, axis, offsets_1d, shape):
+        ndims = len(shape)
+        offsets_long = []
+        for o_1d in offsets_1d:
+            o_nd = jnp.zeros(ndims, dtype=int)
+            o_nd[axis] = o_1d
+            o_long = to_long_index(o_nd, shape)
+            offsets_long.append(o_long)
+        return offsets_long
