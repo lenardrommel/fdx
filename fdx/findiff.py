@@ -2,10 +2,14 @@ from jax import numpy as jnp
 from jax.scipy import sparse
 
 from fdx.coefs import coefficients, compute_coeffs
-from fdx.utils import get_long_indices_for_all_grid_points_as_ndarray, to_long_index
+from fdx.utils import (
+    get_long_indices_for_all_grid_points_as_1d_array,
+    get_long_indices_for_all_grid_points_as_ndarray,
+    to_long_index,
+)
 
 
-class FinDiffBase:
+class _FinDiffBase:
     def __init__(self, axis, order):
         self.axis = axis
         self.order = order
@@ -21,7 +25,7 @@ class FinDiffBase:
         if jnp.issubdtype(f.dtype, jnp.integer):
             f = f.astype(jnp.float64)
         return f
-    
+
     def apply_to_array(self, yd, y, weights, off_slices, ref_slice, dim):
         """Applies the finite differences only to slices along a given axis"""
 
@@ -40,26 +44,23 @@ class FinDiffBase:
             else:
                 yd[tuple(ref_multi_slice)] += w * y[tuple(off_multi_slice)]
 
-    
     def shift_slice(self, sl, off, max_index):
-
         if sl.start + off < 0 or sl.stop + off > max_index:
             raise IndexError("Shift slice out of bounds")
 
         return slice(sl.start + off, sl.stop + off, sl.step)
-    
+
     def matrix(self, shape):
         siz = jnp.prod(shape)
         mat = jnp.zeros((siz, siz))
         self.write_matrix_entries(mat, shape)
         return mat
 
-
     def write_matrix_entries(self, mat, shape):
         raise NotImplementedError
-    
 
-class FinDiffUniform(FinDiffBase):
+
+class _FinDiffUniform(_FinDiffBase):
     def __init__(self, axis, order, spacing, acc):
         super().__init__(axis, order)
         self.spacing = spacing
@@ -68,7 +69,7 @@ class FinDiffUniform(FinDiffBase):
         self.forward = coef_schemes["forward"]
         self.backward = coef_schemes["backward"]
         self.center = coef_schemes["center"]
-    
+
     def __call__(self, f):
         f = self.guard_valid_target(f)
         npts = f.shape[self.axis]
@@ -83,7 +84,7 @@ class FinDiffUniform(FinDiffBase):
 
         h_inv = 1.0 / self.spacing**self.order
         return fd * h_inv
-    
+
     def _apply_backward_coefs(self, f, fd, npts, num_bndry_points):
         weights = self.backward["coefficients"]
         offsets = self.backward["offsets"]
@@ -114,7 +115,6 @@ class FinDiffUniform(FinDiffBase):
     def write_matrix_entries(self, mat, shape):
         long_indices_nd = get_long_indices_for_all_grid_points_as_ndarray(shape)
         for scheme in ["center", "forward", "backward"]:
-
             offsets_long = self._convert_1D_offsets_to_long_indices(
                 self.axis, getattr(self, scheme)["offsets"], shape
             )
@@ -148,3 +148,36 @@ class FinDiffUniform(FinDiffBase):
             o_long = to_long_index(o_nd, shape)
             offsets_long.append(o_long)
         return offsets_long
+
+
+class _FinDiffUniformPeriodic(_FinDiffBase):
+    def __init__(self, axis, order, spacing, acc):
+        super().__init__(axis, order)
+        self.spacing = spacing
+        self.acc = acc
+        self.coefs = coefficients(self.order, acc)["center"]
+
+    def __call__(self, f):
+        f = self.guard_valid_target(f)
+
+        fd = jnp.zeros_like(f)
+        for off, coef in zip(self.coefs["offsets"], self.coefs["coefficients"]):
+            fd += coef * jnp.roll(f, -off, axis=self.axis)
+        h_inv = 1.0 / self.spacing**self.order
+        return fd * h_inv
+
+    def write_matrix_entries(self, mat, shape):
+        Is = get_long_indices_for_all_grid_points_as_1d_array(shape)
+        h_inv = 1 / self.spacing**self.order
+        for o, c in zip(self.coefs["offsets"], self.coefs["coefficients"]):
+            Is_off = self._get_offset_indices_long(o, shape)
+            mat[Is, Is_off] = c * h_inv
+
+    def _get_offset_indices_long(self, o, shape):
+        ndims = len(shape)
+        idxs_short = [jnp.arange(n) for n in shape]
+        idxs_short[self.axis] = jnp.roll(jnp.arange(shape[self.axis]), -o)
+        grid = jnp.meshgrid(*idxs_short, indexing="ij")
+        index_tuples = jnp.stack(grid, axis=-1).reshape(-1, ndims)
+        Is_off = jnp.ravel_multi_index(index_tuples.T, shape)
+        return Is_off
