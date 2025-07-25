@@ -1,12 +1,32 @@
 from jax import numpy as jnp
 from jax.scipy import sparse
 
-from fdx.coefs import coefficients, compute_coeffs
+from fdx.coefs import coefficients, coefficients_non_uni
+from fdx.config import get_precision
+from fdx.grids import EquidistantAxis, GridAxis, NonEquidistantAxis
 from fdx.utils import (
     get_long_indices_for_all_grid_points_as_1d_array,
     get_long_indices_for_all_grid_points_as_ndarray,
     to_long_index,
 )
+
+
+def build_differentiator(order: int, axis: GridAxis, acc):
+    if isinstance(axis, EquidistantAxis):
+        if not axis.periodic:
+            return _FinDiffUniform(axis.dim, order, axis.spacing, acc)
+        else:
+            return _FinDiffUniformPeriodic(axis.dim, order, axis.spacing, acc)
+    elif isinstance(axis, NonEquidistantAxis):
+        if not axis.periodic:
+            raise NotImplementedError(
+                "Non-uniform finite differences for non-periodic axes are not yet implemented."
+            )
+            # return _FinDiffNonUniform(axis.dim, order, axis.coords, acc)
+        else:
+            raise NotImplementedError("Periodic nonuniform axes not yet implemented")
+    else:
+        raise TypeError("Unknown axis type.")
 
 
 class _FinDiffBase:
@@ -39,10 +59,12 @@ class _FinDiffBase:
         for w, s in zip(weights, off_slices):
             off_multi_slice = [all] * ndims
             off_multi_slice[dim] = s
-            if abs(1 - w) < 1.0e-14:
-                yd[tuple(ref_multi_slice)] += y[tuple(off_multi_slice)]
+            if (jnp.abs(1 - w) < get_precision()).item():
+                yd = yd.at[tuple(ref_multi_slice)].add(y[tuple(off_multi_slice)])
             else:
-                yd[tuple(ref_multi_slice)] += w * y[tuple(off_multi_slice)]
+                yd = yd.at[tuple(ref_multi_slice)].add(w * y[tuple(off_multi_slice)])
+
+        return yd
 
     def shift_slice(self, sl, off, max_index):
         if sl.start + off < 0 or sl.stop + off > max_index:
@@ -51,9 +73,9 @@ class _FinDiffBase:
         return slice(sl.start + off, sl.stop + off, sl.step)
 
     def matrix(self, shape):
-        siz = jnp.prod(shape)
+        siz = jnp.prod(*shape)
         mat = jnp.zeros((siz, siz))
-        self.write_matrix_entries(mat, shape)
+        mat = self.write_matrix_entries(mat, shape)
         return mat
 
     def write_matrix_entries(self, mat, shape):
@@ -76,11 +98,11 @@ class _FinDiffUniform(_FinDiffBase):
         fd = jnp.zeros_like(f)
         num_bndry_points = len(self.center["coefficients"]) // 2
 
-        self._apply_central_coefs(f, fd, npts, num_bndry_points)
+        fd = self._apply_central_coefs(f, fd, npts, num_bndry_points)
 
-        self._apply_forward_coefs(f, fd, npts, num_bndry_points)
+        fd = self._apply_forward_coefs(f, fd, npts, num_bndry_points)
 
-        self._apply_backward_coefs(f, fd, npts, num_bndry_points)
+        fd = self._apply_backward_coefs(f, fd, npts, num_bndry_points)
 
         h_inv = 1.0 / self.spacing**self.order
         return fd * h_inv
@@ -92,7 +114,7 @@ class _FinDiffUniform(_FinDiffBase):
         off_slices = [
             self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
         ]
-        self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+        return self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
 
     def _apply_forward_coefs(self, f, fd, npts, num_bndry_points):
         weights = self.forward["coefficients"]
@@ -101,7 +123,7 @@ class _FinDiffUniform(_FinDiffBase):
         off_slices = [
             self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
         ]
-        self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+        return self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
 
     def _apply_central_coefs(self, f, fd, npts, num_bndry_points):
         weights = self.center["coefficients"]
@@ -110,7 +132,7 @@ class _FinDiffUniform(_FinDiffBase):
         off_slices = [
             self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
         ]
-        self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+        return self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
 
     def write_matrix_entries(self, mat, shape):
         long_indices_nd = get_long_indices_for_all_grid_points_as_ndarray(shape)
@@ -125,7 +147,9 @@ class _FinDiffUniform(_FinDiffBase):
             coefs = getattr(self, scheme)["coefficients"]
             for o, c in zip(offsets_long, coefs):
                 v = c / self.spacing**self.order
-                mat[Is, Is + o] = v
+                mat = mat.at[Is, Is + o].set(v)
+
+        return mat
 
     def _get_multislice_for_scheme(self, axis, scheme, shape):
         ndims = len(shape)
@@ -144,7 +168,7 @@ class _FinDiffUniform(_FinDiffBase):
         offsets_long = []
         for o_1d in offsets_1d:
             o_nd = jnp.zeros(ndims, dtype=int)
-            o_nd[axis] = o_1d
+            o_nd = o_nd.at[axis].set(o_1d)
             o_long = to_long_index(o_nd, shape)
             offsets_long.append(o_long)
         return offsets_long
@@ -162,7 +186,7 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
 
         fd = jnp.zeros_like(f)
         for off, coef in zip(self.coefs["offsets"], self.coefs["coefficients"]):
-            fd += coef * jnp.roll(f, -off, axis=self.axis)
+            fd = fd + coef * jnp.roll(f, -off, axis=self.axis)
         h_inv = 1.0 / self.spacing**self.order
         return fd * h_inv
 
@@ -171,7 +195,8 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         h_inv = 1 / self.spacing**self.order
         for o, c in zip(self.coefs["offsets"], self.coefs["coefficients"]):
             Is_off = self._get_offset_indices_long(o, shape)
-            mat[Is, Is_off] = c * h_inv
+            mat = mat.at[Is, Is_off].set(c * h_inv)
+        return mat
 
     def _get_offset_indices_long(self, o, shape):
         ndims = len(shape)
@@ -181,3 +206,59 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         index_tuples = jnp.stack(grid, axis=-1).reshape(-1, ndims)
         Is_off = jnp.ravel_multi_index(index_tuples.T, shape)
         return Is_off
+
+
+# class _FinDiffNonUniform(_FinDiffBase):
+#     def __init__(self, axis, order, coords, acc):
+#         super().__init__(axis, order)
+#         self.coords = coords
+#         self.acc = acc
+#         self.coef_list = [
+#             coefficients_non_uni(order, self.acc, self.coords, i)
+#             for i in range(len(coords))
+#         ]
+
+
+#     def __call__(self, y):
+#         """The core function to take a partial derivative on a non-uniform grid"""
+#         y = self.guard_valid_target(y)
+
+#         dim = self.axis
+
+#         yd = jnp.zeros_like(y)
+
+#         ndims = len(y.shape)
+#         multi_slice = [slice(None, None)] * ndims
+#         ref_multi_slice = [slice(None, None)] * ndims
+
+#         for i, _ in enumerate(self.coords):
+#             coefs = self.coef_list[i]
+#             ref_multi_slice[dim] = i
+
+#             for off, w in zip(coefs["offsets"], coefs["coefficients"]):
+#                 multi_slice[dim] = i + off
+#                 yd[tuple(ref_multi_slice)] += w * y[tuple(multi_slice)]
+
+#         return yd
+
+
+#     def write_matrix_entries(self, mat, shape):
+#         coords = self.coords
+
+#         short_inds = get_list_of_multiindex_tuples(shape)
+
+#         coef_dicts = []
+#         for i in range(len(coords)):
+#             coef_dicts.append(coefficients_non_uni(self.order, self.acc, coords, i))
+
+#         long_inds = get_long_indices_for_all_grid_points_as_ndarray(shape)
+#         for base_ind_long, base_ind_short in enumerate(short_inds):
+#             cd = coef_dicts[base_ind_short[self.axis]]
+#             cs, os = cd["coefficients"], cd["offsets"]
+#             for c, o in zip(cs, os):
+#                 off_short = jnp.zeros(len(shape), dtype=int)
+#                 off_short[self.axis] = int(o)
+#                 off_ind_short = jnp.array(base_ind_short, dtype=int) + off_short
+#                 off_long = long_inds[tuple(off_ind_short)]
+
+#                 mat[base_ind_long, off_long] += c

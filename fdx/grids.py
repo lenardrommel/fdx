@@ -1,5 +1,6 @@
 import numbers
 
+import jax
 from jax import numpy as jnp
 
 
@@ -19,6 +20,12 @@ class EquidistantAxis(GridAxis):
         if spacing <= 0:
             raise ValueError("Spacing must be > 0.")
         self.spacing = spacing
+
+
+class NonEquidistantAxis(GridAxis):
+    def __init__(self, dim: int, coords: jnp.ndarray, periodic=False):
+        super().__init__(dim, periodic)
+        self.coords = coords
 
 
 class Grid:
@@ -72,3 +79,12 @@ def make_axis(dim, config_or_axis, periodic=False):
         return config_or_axis
     if isinstance(config_or_axis, numbers.Number):
         return EquidistantAxis(dim, spacing=config_or_axis, periodic=periodic)
+    if isinstance(config_or_axis, jax.Array):
+        return EquidistantAxis(dim, spacing=config_or_axis, periodic=periodic)
+    else:
+        raise TypeError(
+            f"Unsupported axis type: {type(config_or_axis)}. "
+            "Expected GridAxis, number, or jax.Array."
+        )
+    # elif isinstance(config_or_axis, jnp.ndarray):
+    #     return NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)

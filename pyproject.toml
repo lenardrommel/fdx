@@ -19,6 +19,7 @@ dependencies = [
     "findiff",
     "scipy",
     "sympy"
+    ~/repos/linox,
 ]
 
 requires-python = ">=3.8"

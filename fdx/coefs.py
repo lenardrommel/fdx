@@ -48,6 +48,69 @@ def coefficients(deriv, acc=None, offsets=None, symbolic=False, analytic_inv=Fal
     return ret
 
 
+def coefficients_non_uni(deriv, acc, coords, idx):
+    """
+    Calculates the finite difference coefficients for given derivative order and accuracy order.
+    Assumes that the underlying grid is non-uniform.
+
+    :param deriv: int > 0: The derivative order.
+
+    :param acc:  even int > 0: The accuracy order.
+
+    :param coords:  1D numpy.ndarray: the coordinates of the axis for the partial derivative
+
+    :param idx:  int: index of the grid position where to calculate the coefficients
+
+    :return: dict with the finite difference coefficients and corresponding offsets
+    """
+
+    _validate_deriv(deriv)
+    _validate_acc(acc)
+
+    num_central = 2 * math.floor((deriv + 1) / 2) - 1 + acc
+    num_side = num_central // 2
+
+    if deriv % 2 == 0:
+        num_coef = num_central + 1
+    else:
+        num_coef = num_central
+
+    if idx < num_side:
+        matrix = _build_matrix_non_uniform(0, num_coef - 1, coords, idx)
+
+        offsets = list(range(num_coef))
+        rhs = _build_rhs(offsets, deriv)
+
+        ret = {
+            "coefficients": jnp.linalg.solve(matrix, rhs),
+            "offsets": jnp.array(offsets),
+        }
+
+    elif idx >= len(coords) - num_side:
+        matrix = _build_matrix_non_uniform(num_coef - 1, 0, coords, idx)
+
+        offsets = list(range(-num_coef + 1, 1))
+        rhs = _build_rhs(offsets, deriv)
+
+        ret = {
+            "coefficients": jnp.linalg.solve(matrix, rhs),
+            "offsets": jnp.array(offsets),
+        }
+
+    else:
+        matrix = _build_matrix_non_uniform(num_side, num_side, coords, idx)
+
+        offsets = list(range(-num_side, num_side + 1))
+        rhs = _build_rhs(offsets, deriv)
+
+        ret = {
+            "coefficients": jnp.linalg.solve(matrix, rhs),
+            "offsets": jnp.array([p for p in range(-num_side, num_side + 1)]),
+        }
+
+    return ret
+
+
 def compute_coeffs(deriv, offsets, analytic_inv=False):
     if analytic_inv:
         coefs = compute_inverse_Vandermonde(deriv, offsets)
@@ -59,6 +122,15 @@ def compute_coeffs(deriv, offsets, analytic_inv=False):
     acc = _calc_accuracy(offsets, coefs, deriv)
     offsets = jnp.array(offsets, dtype=jnp.int32)
     return {"coefficients": coefs, "offsets": offsets, "accuracy": acc}
+
+
+def _build_matrix_non_uniform(p, q, coords, k, dtype=_dtype):
+    """Constructs the equation matrix for the finite difference coefficients of non-uniform grids at location k"""
+    A = [[1] * (p + q + 1)]
+    for i in range(1, p + q + 1):
+        line = [(coords[k + j] - coords[k]) ** i for j in range(-p, q + 1)]
+        A.append(line)
+    return jnp.array(A, dtype=dtype)
 
 
 def compute_inverse_Vandermonde(column, offsets, dtype=_dtype):
