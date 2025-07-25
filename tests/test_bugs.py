@@ -132,8 +132,16 @@ def test_accuracy_should_be_passed_down_to_stencil():
         assert_dict_almost_equal(expected[char_pt], stl)
 
 
+def test_order_as_numpy_integer():
+    order = jnp.ones(3, dtype=jnp.int32)[0]
+    d_dx = FinDiff(0, 0.1, order)  # raised an AssertionError with the bug
+
+    jnp.allclose(d_dx(jnp.linspace(0, 1, 11)), jnp.ones(11))
+
+
 test_findiff_should_raise_exception_when_applied_to_unevaluated_function()
 test_matrix_representation_doesnt_work_for_order_greater_2_issue_24()
 test_high_accuracy_results_in_type_error()
 test_matrix_repr_with_different_accs()
 test_accuracy_should_be_passed_down_to_stencil()
+test_order_as_numpy_integer()
