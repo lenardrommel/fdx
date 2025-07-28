@@ -2,7 +2,7 @@ import numbers
 
 from jax import numpy as jnp
 from linox import LinearOperator
-from linox._arithmetic import lmatmul, lmul
+from linox._arithmetic import ProductLinearOperator, lmatmul, lmul
 from linox._matrix import Diagonal
 
 from fdx.config import _dtype
@@ -130,8 +130,12 @@ class Diff(LinearOperator):
         return new_diff
 
     def __mul__(self, other):
-        if isinstance(other, Diff) and self.dim == other.dim:
-            new_diff = Diff(self.dim, self.axis, acc=self.acc)
-            new_diff._order += other.order
-            return new_diff
-        return super().__mul__(other)
+        if isinstance(other, Diff):
+            if self.dim == other.dim:
+                new_diff = Diff(self.dim, self.axis, acc=self.acc)
+                new_diff._order += other.order
+                return new_diff
+            else:
+                return ProductLinearOperator(other, self.item())
+        else:
+            return super().__mul__(other)

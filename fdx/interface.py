@@ -1,5 +1,5 @@
-from .grids import make_axis
-from .operators import Diff as _Diff
+from fdx.grids import make_axis
+from fdx.operators import Diff as _Diff
 
 
 class Diff(_Diff):

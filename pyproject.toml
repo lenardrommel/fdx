@@ -18,7 +18,7 @@ dependencies = [
     "numpy",
     "findiff",
     "scipy",
-    "sympy"
+    "sympy",
     ~/repos/linox,
 ]
 
