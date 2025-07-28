@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-# fdx
-Finite differences in JAX.
-=======
+
 # Finite Differences in JAX - fdx
 
 ## About
@@ -20,4 +17,4 @@ While this package doesn't include all features from the original library, it fo
 ## Limitations
 
 This is a research-focused implementation with limited maintenance capacity. For production use cases requiring extensive features, consider the original findiff library.
->>>>>>> master
+
