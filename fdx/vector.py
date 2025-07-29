@@ -74,16 +74,20 @@ class Gradient(VectorOperator):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def __call__(self, f):
+    def __call__(self, f, axis=None, has_batch=False):
         """
         Applies the N-dimensional gradient to the array f.
 
-        :param f:  ``numpy.ndarray``
-
-                Array to apply the gradient to. It represents a scalar function,
+        :param f:  ``jax.Array`` Array to apply the gradient to. It represents a scalar function,
                 so it must have N axes for the N independent variables.
+        :param axis: int
+                The axis along which to apply the gradient. Default is 0.
 
-        :returns: ``numpy.ndarray``
+        :param has_batch: bool
+                If True, the first axis of f is considered a batch dimension.
+
+
+        :returns: ``jax.Array``
 
                 The gradient of f, which has N+1 axes, i.e. it is
                 an array of N arrays of N axes each.
@@ -93,15 +97,27 @@ class Gradient(VectorOperator):
         if not isinstance(f, jnp.ndarray):
             raise TypeError("Function to differentiate must be jnp.ndarray")
 
-        if len(f.shape) != self.ndims:
+        if len(f.shape) != self.ndims and axis is None:
             raise ValueError("Gradients can only be applied to scalar functions")
 
-        result = []
-        for k in range(self.ndims):
-            d_dxk = self.components[k]
-            result.append(d_dxk(f, acc=self.acc))
+        if axis is None:
+            parts = [comp(f, acc=self.acc) for comp in self.components]
+            if has_batch:
+                return jnp.stack(parts, axis=0).squeeze(0)
+            else:
+                return jnp.stack(parts, axis=0)
 
-        return jnp.array(result)
+        axis = int(axis) % f.ndim
+        comp_axis = 0
+        f_moved = jnp.moveaxis(f, axis, comp_axis)
+        df_moved = self.components[comp_axis](f_moved, acc=self.acc)
+        return jnp.moveaxis(df_moved, comp_axis, axis)
+        # result = []
+        # for k in range(self.ndims):
+        #     d_dxk = self.components[k]
+        #     result.append(d_dxk(f, acc=self.acc))
+
+        # return jnp.array(result)
 
 
 class Divergence(VectorOperator):

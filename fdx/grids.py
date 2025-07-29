@@ -17,7 +17,7 @@ class GridAxis:
 class EquidistantAxis(GridAxis):
     def __init__(self, dim: int, spacing: float, periodic=False):
         super().__init__(dim, periodic)
-        if spacing <= 0:
+        if spacing.mean() <= 0:
             raise ValueError("Spacing must be > 0.")
         self.spacing = spacing
 
