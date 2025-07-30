@@ -17,7 +17,7 @@ class GridAxis:
 class EquidistantAxis(GridAxis):
     def __init__(self, dim: int, spacing: float, periodic=False):
         super().__init__(dim, periodic)
-        if spacing.mean() <= 0:
+        if spacing <= 0:
             raise ValueError("Spacing must be > 0.")
         self.spacing = spacing
 
@@ -80,7 +80,15 @@ def make_axis(dim, config_or_axis, periodic=False):
     if isinstance(config_or_axis, numbers.Number):
         return EquidistantAxis(dim, spacing=config_or_axis, periodic=periodic)
     if isinstance(config_or_axis, jax.Array):
-        return EquidistantAxis(dim, spacing=config_or_axis, periodic=periodic)
+        if config_or_axis.size > 1:
+            spacing = jnp.diff(config_or_axis)
+            if jnp.allclose(spacing, spacing[0]):
+                return EquidistantAxis(dim, spacing=spacing[0], periodic=periodic)
+            return NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
+        else:
+            return EquidistantAxis(
+                dim, spacing=config_or_axis.item(), periodic=periodic
+            )
     else:
         raise TypeError(
             f"Unsupported axis type: {type(config_or_axis)}. "
@@ -88,3 +96,7 @@ def make_axis(dim, config_or_axis, periodic=False):
         )
     # elif isinstance(config_or_axis, jnp.ndarray):
     #     return NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
+
+
+def set_accuracy():
+    pass

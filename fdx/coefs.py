@@ -209,7 +209,9 @@ def _calc_accuracy(offsets, coefs, deriv):
 
 def _validate_acc(acc):
     if acc % 2 == 1 or acc <= 0:
-        raise ValueError("Accuracy order acc must be positive EVEN integer")
+        raise ValueError(
+            f"Accuracy order acc must be positive EVEN integer. Got {acc}, expected {acc + 1} or {acc - 1}."
+        )
 
 
 def _validate_deriv(deriv):

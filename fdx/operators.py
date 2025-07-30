@@ -46,6 +46,7 @@ class Diff(LinearOperator):
         """
         super().__init__(shape=(dim, dim), dtype=_dtype)
 
+        self.children = []
         self.set_axis(axis)
         self.dim = dim
         self.acc = acc
