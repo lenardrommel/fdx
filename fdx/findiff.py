@@ -88,23 +88,21 @@ class _FinDiffBase:
         return self.apply_convolution_along_axis(f_padded, coeffs)
 
     def apply_to_array(self, yd, y, weights, off_slices, ref_slice, dim):
-        """Applies the finite differences only to slices along a given axis"""
+        """Apply FD slices along axis; branch-free, dtype-safe."""
+        ndims = y.ndim
+        all_ = slice(None)
+        ref_multi = [all_] * ndims
+        ref_multi[dim] = ref_slice
+        ref_tup = tuple(ref_multi)
 
-        ndims = len(y.shape)
-        all = slice(None, None, 1)
+        # Ensure weights live on the same device/dtype as y
+        wv = jnp.asarray(weights, dtype=y.dtype)
 
-        ref_multi_slice = [all] * ndims
-        ref_multi_slice[dim] = ref_slice
-
-        index = 0
-        for w, s in zip(weights, off_slices):
-            index += 1
-            off_multi_slice = [all] * ndims
-            off_multi_slice[dim] = s
-            if (jnp.abs(1 - w) < get_precision()).item():
-                yd = yd.at[tuple(ref_multi_slice)].add(y[tuple(off_multi_slice)])
-            else:
-                yd = yd.at[tuple(ref_multi_slice)].add(w * y[tuple(off_multi_slice)])
+        for w, s in zip(wv, off_slices):
+            off_multi = [all_] * ndims
+            off_multi[dim] = s
+            off_tup = tuple(off_multi)
+            yd = yd.at[ref_tup].add(w * y[off_tup])
         return yd
 
     def shift_slice(self, sl, off, max_index):

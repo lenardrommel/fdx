@@ -1,7 +1,8 @@
 import math
 from itertools import combinations
 
-from jax import numpy as jnp
+# from jax import numpy as jnp
+import numpy as jnp
 
 from fdx.config import _dtype
 

@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax
 from jax import numpy as jnp
 from linox import LinearOperator
@@ -93,7 +95,6 @@ class Gradient(VectorOperator):
                 an array of N arrays of N axes each.
 
         """
-
         if not isinstance(f, jnp.ndarray):
             raise TypeError("Function to differentiate must be jnp.ndarray")
 
@@ -112,12 +113,12 @@ class Gradient(VectorOperator):
         f_moved = jnp.moveaxis(f, axis, comp_axis)
         df_moved = self.components[comp_axis](f_moved, acc=self.acc)
         return jnp.moveaxis(df_moved, comp_axis, axis)
-        # result = []
-        # for k in range(self.ndims):
-        #     d_dxk = self.components[k]
-        #     result.append(d_dxk(f, acc=self.acc))
+        result = []
+        for k in range(self.ndims):
+            d_dxk = self.components[k]
+            result.append(d_dxk(f, acc=self.acc))
 
-        # return jnp.array(result)
+        return jnp.array(result)
 
 
 class Divergence(VectorOperator):
