@@ -1,9 +1,9 @@
 import math
 from itertools import combinations
 
-# from jax import numpy as jnp
-import numpy as jnp
+from jax import numpy as jnp
 
+# import numpy as jnp
 from fdx.config import _dtype
 
 
@@ -127,6 +127,7 @@ def compute_coeffs(deriv, offsets, analytic_inv=False):
 
 def _build_matrix_non_uniform(p, q, coords, k, dtype=_dtype):
     """Constructs the equation matrix for the finite difference coefficients of non-uniform grids at location k"""
+    # TODO: Rewrite JAX friendly
     A = [[1] * (p + q + 1)]
     for i in range(1, p + q + 1):
         line = [(coords[k + j] - coords[k]) ** i for j in range(-p, q + 1)]
@@ -171,7 +172,7 @@ def compute_inverse_Vandermonde(column, offsets, dtype=_dtype):
 
 def _build_matrix(offsets, dtype=_dtype):
     """Constructs the equation system matrix for the finite difference coefficients"""
-
+    # TODO: Rewrite JAX friendly
     A = [([1 for _ in offsets])]
     for i in range(1, len(offsets)):
         A.append([j**i for j in offsets])
@@ -180,6 +181,7 @@ def _build_matrix(offsets, dtype=_dtype):
 
 def _build_rhs(offsets, deriv, dtype=_dtype):
     """The right hand side of the equation system matrix"""
+    # TODO: Rewrite JAX friendly
     b = [0 for _ in offsets]
     b[deriv] = math.factorial(deriv)
 
@@ -187,6 +189,7 @@ def _build_rhs(offsets, deriv, dtype=_dtype):
 
 
 def _calc_accuracy(offsets, coefs, deriv):
+    # TODO: Rewrite JAX friendly
     n = deriv + 1
     max_n = 999
     break_cond = lambda b: abs(b) > 1.0e-6  # noqa: E731
