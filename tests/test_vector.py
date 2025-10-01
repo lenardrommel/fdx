@@ -36,7 +36,7 @@ def test_gradient_1d_sine():
     print(f"Maximum error: {max_error}")
 
     # Test with tolerance appropriate for finite differences
-    assert (actual_grad - expected_grad).mean() < 1e-2
+    assert jnp.mean(jnp.abs(actual_grad - expected_grad)) < 1e-2
 
     print("✓ 1D sine function gradient test passed!")
 
