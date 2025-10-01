@@ -106,4 +106,7 @@ def make_axis(
 
 
 def set_accuracy(accuracy: float) -> None:
-    pass
+    """
+    Placeholder for setting accuracy. Not yet implemented.
+    """
+    raise NotImplementedError("set_accuracy is not implemented yet.")
