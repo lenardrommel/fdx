@@ -109,7 +109,7 @@ class Gradient(VectorOperator):
         if axis is None:
             parts = [comp(f, acc=self.acc) for comp in self.components]
             if has_batch:
-                return jnp.stack(parts, axis=0).squeeze(0)
+                return jnp.stack(parts, axis=1)
             else:
                 return jnp.stack(parts, axis=0)
 
