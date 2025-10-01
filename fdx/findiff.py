@@ -1,4 +1,5 @@
-import jax
+# findiff.py
+
 from jax import numpy as jnp
 from jax.scipy import sparse
 
@@ -47,62 +48,24 @@ class _FinDiffBase:
             f = f.astype(jnp.float64)
         return f
 
-    def apply_convolution_along_axis(self, f, coeffs, offsets=None):
-        if f.ndim == 1:
-            return jnp.convolve(f, coeffs[::-1], mode="valid")
-        f_moved = jnp.moveaxis(f, self.axis, 0)
-        original_shape = f_moved.shape
-        f_2d = f_moved.reshape(original_shape[0], -1)
-
-        def conv_1d_column(col):
-            return jnp.convolve(col, coeffs[::-1], mode="valid")
-
-        result_2d = jax.vmap(conv_1d_column, in_axes=1, out_axes=1)(f_2d)
-
-        conv_size_reduction = len(coeffs) - 1
-        new_axis_size = original_shape[0] - conv_size_reduction
-        new_shape = (new_axis_size,) + original_shape[1:]
-        result = result_2d.reshape(new_shape)
-
-        # Move axis back to original position
-        return jnp.moveaxis(result, 0, self.axis)
-
-    def apply_padded_convolution_along_axis(
-        self, f, coeffs, pad_mode="constant", pad_value=0
-    ):
-        """
-        NEW: Alternative that maintains original array size using padding.
-        Useful when you want output same size as input.
-        """
-        pad_width = len(coeffs) // 2
-
-        if f.ndim == 1:
-            f_padded = jnp.pad(f, pad_width, mode=pad_mode, constant_values=pad_value)
-            return jnp.convolve(f_padded, coeffs[::-1], mode="valid")
-
-        # For multi-dimensional arrays
-        pad_spec = [(0, 0)] * f.ndim
-        pad_spec[self.axis] = (pad_width, pad_width)
-
-        f_padded = jnp.pad(f, pad_spec, mode=pad_mode, constant_values=pad_value)
-        return self.apply_convolution_along_axis(f_padded, coeffs)
-
     def apply_to_array(self, yd, y, weights, off_slices, ref_slice, dim):
-        """Apply FD slices along axis; branch-free, dtype-safe."""
-        ndims = y.ndim
-        all_ = slice(None)
-        ref_multi = [all_] * ndims
-        ref_multi[dim] = ref_slice
-        ref_tup = tuple(ref_multi)
+        """Applies the finite differences only to slices along a given axis"""
 
-        # Ensure weights live on the same device/dtype as y
-        wv = jnp.asarray(weights, dtype=y.dtype)
+        ndims = len(y.shape)
 
-        for w, s in zip(wv, off_slices):
-            off_multi = [all_] * ndims
-            off_multi[dim] = s
-            off_tup = tuple(off_multi)
-            yd = yd.at[ref_tup].add(w * y[off_tup])
+        all = slice(None, None, 1)
+
+        ref_multi_slice = [all] * ndims
+        ref_multi_slice[dim] = ref_slice
+
+        for w, s in zip(weights, off_slices):
+            off_multi_slice = [all] * ndims
+            off_multi_slice[dim] = s
+            if (jnp.abs(1 - w) < get_precision()).item():
+                yd = yd.at[tuple(ref_multi_slice)].add(y[tuple(off_multi_slice)])
+            else:
+                yd = yd.at[tuple(ref_multi_slice)].add(w * y[tuple(off_multi_slice)])
+
         return yd
 
     def shift_slice(self, sl, off, max_index):
@@ -130,31 +93,6 @@ class _FinDiffUniform(_FinDiffBase):
         self.forward = coef_schemes["forward"]
         self.backward = coef_schemes["backward"]
         self.center = coef_schemes["center"]
-
-    def convolve(self, yd, y, num_bndry_points):
-        central_part = jnp.convolve(y, self.center["coefficients"][::-1], mode="valid")
-        result = yd.at[num_bndry_points:-num_bndry_points].set(central_part)
-        length = y.shape[self.axis]
-
-        def left_side_conv(coeffs):
-            return jnp.convolve(y[: num_bndry_points * 2], coeffs[::-1], mode="valid")
-
-        def right_side_conv(coeffs):
-            slice_start = length - len(coeffs)
-            right_slice = y[slice_start:]
-            return jnp.convolve(right_slice, coeffs[::-1], mode="valid")
-
-        # Process left boundary
-        for i in range(num_bndry_points):
-            conv_result = left_side_conv(self.backward["coefficients"][i])
-            result = result.at[i].set(conv_result[i])
-
-        # Process right boundary
-        for i in range(num_bndry_points):
-            conv_result = right_side_conv(self.forward["coefficients"][i])
-            result = result.at[length - num_bndry_points + i].set(conv_result[0])
-
-        return result
 
     def __call__(self, f):
         f = self.guard_valid_target(f)
@@ -197,9 +135,6 @@ class _FinDiffUniform(_FinDiffBase):
             self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
         ]
         return self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
-        # central_part = jnp.convolve(f, weights[::-1], mode="valid")
-        # fd = fd.at[ref_slice].set(central_part)
-        # return fd
 
     def write_matrix_entries(self, mat, shape):
         long_indices_nd = get_long_indices_for_all_grid_points_as_ndarray(shape)

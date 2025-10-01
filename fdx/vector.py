@@ -1,4 +1,7 @@
+# vector.py
+
 from functools import partial
+from typing import Any, List, Optional, Union
 
 import jax
 from jax import numpy as jnp
@@ -12,7 +15,7 @@ class VectorOperator:
     Shall not be instantiated directly, but through the child classes.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         """Constructor for the VectorOperator base class.
 
         kwargs:
@@ -50,7 +53,7 @@ class VectorOperator:
                 FinDiff((k, coords[k], 1), **kwargs) for k in range(self.ndims)
             ]
 
-    def __get_dimension(self, coords):
+    def __get_dimension(self, coords: List[jnp.ndarray]) -> int:
         return len(coords)
 
 
@@ -73,10 +76,12 @@ class Gradient(VectorOperator):
                      accuracy order, must be positive integer, default is 2
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, f, axis=None, has_batch=False):
+    def __call__(
+        self, f: jnp.ndarray, axis: Optional[int] = None, has_batch: bool = False
+    ) -> jnp.ndarray:
         """
         Applies the N-dimensional gradient to the array f.
 
@@ -142,10 +147,10 @@ class Divergence(VectorOperator):
 
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, f):
+    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """
         Applies the divergence to the array f.
 
@@ -204,7 +209,7 @@ class Curl(VectorOperator):
 
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
         if self.ndims != 3:
@@ -212,7 +217,7 @@ class Curl(VectorOperator):
                 f"Curl operation is only defined in 3 dimensions. {self.ndims} were given."
             )
 
-    def __call__(self, f):
+    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """
         Applies the curl to the array f.
 
@@ -255,14 +260,14 @@ class Curl(VectorOperator):
 
 
 class Laplacian(VectorOperator):
-    def __init__(self, h=None, acc=2):
+    def __init__(self, h: Optional[List[float]] = None, acc: int = 2) -> None:
         h = h or [1.0]
         h = wrap_in_ndarray(h)
 
         self._parts = [FinDiff((k, h[k], 2), acc=acc) for k in range(len(h))]
         super().__init__(h=h, acc=acc)
 
-    def __call__(self, f):
+    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """
         Applies the Laplacian to the array f.
 
@@ -283,7 +288,7 @@ class Laplacian(VectorOperator):
         return laplace_f
 
 
-def wrap_in_ndarray(value):
+def wrap_in_ndarray(value: Union[jnp.ndarray, List[float]]) -> jnp.ndarray:
     """Wraps the argument in a numpy.ndarray.
 
     If value is a scalar, it is converted in a list first.

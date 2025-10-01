@@ -1,11 +1,14 @@
+# grids.py
+
 import numbers
+from typing import Dict, Optional, Union
 
 import jax
 from jax import numpy as jnp
 
 
 class GridAxis:
-    def __init__(self, dim: int, periodic=False):
+    def __init__(self, dim: int, periodic: bool = False) -> None:
         if not isinstance(dim, numbers.Number) or int(dim) != dim:
             raise ValueError("Dimension must be an integer")
         if dim < 0:
@@ -15,7 +18,7 @@ class GridAxis:
 
 
 class EquidistantAxis(GridAxis):
-    def __init__(self, dim: int, spacing: float, periodic=False):
+    def __init__(self, dim: int, spacing: float, periodic: bool = False) -> None:
         super().__init__(dim, periodic)
         if spacing <= 0:
             raise ValueError("Spacing must be > 0.")
@@ -23,20 +26,20 @@ class EquidistantAxis(GridAxis):
 
 
 class NonEquidistantAxis(GridAxis):
-    def __init__(self, dim: int, coords: jnp.ndarray, periodic=False):
+    def __init__(self, dim: int, coords: jnp.ndarray, periodic: bool = False) -> None:
         super().__init__(dim, periodic)
         self.coords = coords
 
 
 class Grid:
-    def __init__(self, *axes: GridAxis):
+    def __init__(self, *axes: GridAxis) -> None:
         self.axes = {ax.dim: ax for ax in axes}
 
-    def get_axis(self, dim: int) -> GridAxis:
+    def get_axis(self, dim: int) -> Optional[GridAxis]:
         return self.axes.get(dim)
 
 
-def make_grid(config_or_grid):
+def make_grid(config_or_grid: Union[Grid, dict]) -> Grid:
     """Makes or returns a grid based on configuration or an actual Grid instance.
 
     Historically, the API allowed to specify grid using a variety of
@@ -65,7 +68,11 @@ def make_grid(config_or_grid):
         raise TypeError(f"Unsupported grid type: {type(config_or_grid)}")
 
 
-def make_axis(dim, config_or_axis, periodic=False):
+def make_axis(
+    dim: int,
+    config_or_axis: Union[GridAxis, numbers.Number, jax.Array],
+    periodic: bool = False,
+) -> GridAxis:
     """Makes or returns a grid axis based on configuration or an actual GridAxis instance.
 
     Historically, the API allowed to specify axes using a variety of
@@ -98,5 +105,5 @@ def make_axis(dim, config_or_axis, periodic=False):
     #     return NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
 
 
-def set_accuracy():
+def set_accuracy(accuracy: float) -> None:
     pass

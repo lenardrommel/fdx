@@ -1,13 +1,23 @@
+# coefs.py
+
 import math
 from itertools import combinations
+from typing import Any, Dict, List, Optional
 
+from jax import lax
 from jax import numpy as jnp
 
 # import numpy as jnp
 from fdx.config import _dtype
 
 
-def coefficients(deriv, acc=None, offsets=None, symbolic=False, analytic_inv=False):
+def coefficients(
+    deriv: int,
+    acc: Optional[int] = None,
+    offsets: Optional[List[int]] = None,
+    symbolic: bool = False,
+    analytic_inv: bool = False,
+) -> Dict[str, Any]:
     _validate_deriv(deriv)
     if acc is not None and offsets:
         raise ValueError("acc and offsets cannot both be given")
@@ -49,7 +59,9 @@ def coefficients(deriv, acc=None, offsets=None, symbolic=False, analytic_inv=Fal
     return ret
 
 
-def coefficients_non_uni(deriv, acc, coords, idx):
+def coefficients_non_uni(
+    deriv: int, acc: int, coords: jnp.ndarray, idx: int
+) -> Dict[str, jnp.ndarray]:
     """
     Calculates the finite difference coefficients for given derivative order and accuracy order.
     Assumes that the underlying grid is non-uniform.
@@ -112,7 +124,9 @@ def coefficients_non_uni(deriv, acc, coords, idx):
     return ret
 
 
-def compute_coeffs(deriv, offsets, analytic_inv=False):
+def compute_coeffs(
+    deriv: int, offsets: List[int], analytic_inv: bool = False
+) -> Dict[str, Any]:
     if analytic_inv:
         coefs = compute_inverse_Vandermonde(deriv, offsets)
     else:
@@ -125,22 +139,31 @@ def compute_coeffs(deriv, offsets, analytic_inv=False):
     return {"coefficients": coefs, "offsets": offsets, "accuracy": acc}
 
 
-def _build_matrix_non_uniform(p, q, coords, k, dtype=_dtype):
+def _build_matrix_non_uniform(
+    p: int, q: int, coords: jnp.ndarray, k: int, dtype: Any = _dtype
+) -> jnp.ndarray:
     """Constructs the equation matrix for the finite difference coefficients of non-uniform grids at location k"""
-    # TODO: Rewrite JAX friendly
-    A = [[1] * (p + q + 1)]
-    for i in range(1, p + q + 1):
-        line = [(coords[k + j] - coords[k]) ** i for j in range(-p, q + 1)]
-        A.append(line)
-    return jnp.array(A, dtype=dtype)
+    j_indices = jnp.arange(-p, q + 1)
+
+    powers = jnp.arange(p + q + 1).reshape(-1, 1)
+
+    coord_indices = k + j_indices
+    coord_values = coords[coord_indices]
+    diffs = coord_values - coords[k]
+
+    A = jnp.power(diffs, powers)
+
+    return A.astype(dtype)
 
 
-def compute_inverse_Vandermonde(column, offsets, dtype=_dtype):
+def compute_inverse_Vandermonde(
+    column: int, offsets: List[int], dtype: Any = _dtype
+) -> jnp.ndarray:
     take = lambda arr, ids: arr[jnp.array(ids)]  # noqa: E731
     prod = jnp.prod
     offsets = jnp.array(offsets, dtype=dtype)
 
-    def minus(x, arr):
+    def minus(x: jnp.ndarray, arr: jnp.ndarray) -> jnp.ndarray:
         return x - arr
 
     n = len(offsets)
@@ -170,54 +193,56 @@ def compute_inverse_Vandermonde(column, offsets, dtype=_dtype):
     return jnp.array(inv_vandermonde_column, dtype=dtype) * math.factorial(column)
 
 
-def _build_matrix(offsets, dtype=_dtype):
+def _build_matrix(offsets: List[int], dtype: Any = _dtype) -> jnp.ndarray:
     """Constructs the equation system matrix for the finite difference coefficients"""
-    # TODO: Rewrite JAX friendly
-    A = [([1 for _ in offsets])]
-    for i in range(1, len(offsets)):
-        A.append([j**i for j in offsets])
-    return jnp.array(A, dtype=dtype)
+    return jnp.vander(jnp.array(offsets), len(offsets), increasing=True).T.astype(dtype)
 
 
-def _build_rhs(offsets, deriv, dtype=_dtype):
+def _build_rhs(offsets: List[int], deriv: int, dtype: Any = _dtype) -> jnp.ndarray:
     """The right hand side of the equation system matrix"""
-    # TODO: Rewrite JAX friendly
-    b = [0 for _ in offsets]
-    b[deriv] = math.factorial(deriv)
-
-    return jnp.array(b, dtype=dtype)
+    b = jnp.zeros(len(offsets), dtype=dtype)
+    b = b.at[deriv].set(math.factorial(deriv))
+    return b
 
 
-def _calc_accuracy(offsets, coefs, deriv):
-    # TODO: Rewrite JAX friendly
-    n = deriv + 1
-    max_n = 999
-    break_cond = lambda b: abs(b) > 1.0e-6  # noqa: E731
+def _calc_accuracy(
+    offsets: List[int], coefs: List[float], deriv: int, dtype: Any = _dtype
+) -> int:
+    """Calculate accuracy using JAX-friendly operations"""
+    offsets = jnp.asarray(offsets)
+    coefs = jnp.asarray(coefs)
 
-    while True:
-        b = 0
-        # for i, coef in enumerate(coefs):
-        for o, coef in zip(offsets, coefs):
-            # k = min(offsets) + i
-            b += coef * o**n
+    def cond_fun(state: tuple[int, bool]) -> jnp.ndarray:
+        n, found = state
+        return jnp.logical_and(~found, n <= 999)
 
-        if break_cond(b):
-            break
+    def body_fun(state: tuple[int, bool]) -> tuple[int, bool]:
+        n, _ = state
+        powers = jnp.power(offsets, n)
+        b = jnp.sum(coefs * powers)
+        found = jnp.abs(b) > 1.0e-6
+        return (n + 1, found)
 
-        n += 1
-        if n > max_n:
-            raise Exception("Cannot compute accuracy.")
+    init_state = (deriv + 1, False)
+    final_n, found = lax.while_loop(cond_fun, body_fun, init_state)
 
-    return round(n - deriv)
+    accuracy = lax.cond(
+        found,
+        lambda n: n - deriv - 1,
+        lambda n: -1,
+        final_n,
+    )
+
+    return round(jnp.array(accuracy, dtype=dtype))
 
 
-def _validate_acc(acc):
+def _validate_acc(acc: int) -> None:
     if acc % 2 == 1 or acc <= 0:
         raise ValueError(
             f"Accuracy order acc must be positive EVEN integer. Got {acc}, expected {acc + 1} or {acc - 1}."
         )
 
 
-def _validate_deriv(deriv):
+def _validate_deriv(deriv: int) -> None:
     if deriv < 0:
         raise ValueError("Derive degree must be positive integer")
