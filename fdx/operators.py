@@ -1,3 +1,5 @@
+# operators.py
+
 import numbers
 
 from jax import numpy as jnp
@@ -47,11 +49,17 @@ class Diff(LinearOperator):
         super().__init__(shape=(dim, dim), dtype=_dtype)
 
         self.children = []
-        self.set_axis(axis)
+        self._order = 1
         self.dim = dim
         self.acc = acc
-        self._order = 1
-        self._differentiator = None
+        self.set_axis(axis)
+
+        # self._differentiator = None
+
+        if axis is not None:
+            self._differentiator = build_differentiator(self.order, axis, acc)
+        else:
+            self._differentiator = None
 
     def set_grid(self, grid):
         super().set_grid(grid)
@@ -59,7 +67,13 @@ class Diff(LinearOperator):
 
     def set_axis(self, axis: GridAxis):
         self._axis = axis
-        self._differentiator = None
+        # Recreate differentiator when axis changes
+        if axis is not None:
+            self._differentiator = build_differentiator(
+                self.order, self._axis, self.acc
+            )
+        else:
+            self._differentiator = None
 
     @property
     def axis(self):
@@ -92,7 +106,8 @@ class Diff(LinearOperator):
 
     @property
     def differentiator(self):
-        if self._differentiator is None:
+        # Only lazy-create if it doesn't exist yet
+        if self._differentiator is None and self._axis is not None:
             self._differentiator = build_differentiator(self.order, self.axis, self.acc)
         return self._differentiator
 

@@ -1,5 +1,7 @@
 # findiff.py
 
+import jax
+from jax import lax
 from jax import numpy as jnp
 from jax.scipy import sparse
 
@@ -11,6 +13,8 @@ from fdx.utils import (
     get_long_indices_for_all_grid_points_as_ndarray,
     to_long_index,
 )
+
+jax.config.update("jax_enable_x64", True)
 
 
 def build_differentiator(order: int, axis: GridAxis, acc):
@@ -32,9 +36,10 @@ def build_differentiator(order: int, axis: GridAxis, acc):
 
 
 class _FinDiffBase:
-    def __init__(self, axis, order):
+    def __init__(self, axis, order, dtype=jnp.float64):
         self.axis = axis
         self.order = order
+        self._dtype = dtype
 
     def guard_valid_target(self, f):
         try:
@@ -48,30 +53,46 @@ class _FinDiffBase:
             f = f.astype(jnp.float64)
         return f
 
-    def apply_to_array(self, yd, y, weights, off_slices, ref_slice, dim):
-        """Applies the finite differences only to slices along a given axis"""
+    def apply_to_array(self, yd, y, weights, offsets, ref_start, ref_size, dim):
+        """Applies finite differences using JAX-compatible dynamic slicing.
 
+        Args:
+            yd: output array to accumulate into
+            y: input array
+            weights: coefficients for finite differences
+            offsets: offset indices for each stencil point
+            ref_start: starting index of reference region
+            ref_size: size of reference region
+            dim: axis along which to apply differences
+        """
         ndims = len(y.shape)
 
-        all = slice(None, None, 1)
+        for w, offset in zip(weights, offsets):
+            start_idx = ref_start + offset
 
-        ref_multi_slice = [all] * ndims
-        ref_multi_slice[dim] = ref_slice
+            start_indices = jnp.asarray([0] * ndims)
+            start_indices = start_indices.at[dim].set(start_idx)
 
-        for w, s in zip(weights, off_slices):
-            off_multi_slice = [all] * ndims
-            off_multi_slice[dim] = s
-            if (jnp.abs(1 - w) < get_precision()).item():
-                yd = yd.at[tuple(ref_multi_slice)].add(y[tuple(off_multi_slice)])
-            else:
-                yd = yd.at[tuple(ref_multi_slice)].add(w * y[tuple(off_multi_slice)])
+            slice_sizes = list(y.shape)
+            slice_sizes[dim] = ref_size
+
+            y_slice = lax.dynamic_slice(y, start_indices, slice_sizes)
+
+            update_start_indices = jnp.asarray([0] * ndims)
+            update_start_indices = update_start_indices.at[dim].set(ref_start)
+
+            ref_slice = lax.dynamic_slice(yd, update_start_indices, slice_sizes)
+
+            updated_slice = ref_slice + w * y_slice
+
+            # Write back using dynamic update
+            yd = lax.dynamic_update_slice(yd, updated_slice, update_start_indices)
 
         return yd
 
-    def shift_slice(self, sl, off, max_index):
-        if sl.start + off < 0 or sl.stop + off > max_index:
-            raise IndexError("Shift slice out of bounds")
-
+    def shift_slice(self, sl: slice, off: int, max_index: int) -> slice:
+        # if sl.start + off < 0 or sl.stop + off > max_index:
+        #     raise IndexError("Shift slice out of bounds")
         return slice(sl.start + off, sl.stop + off, sl.step)
 
     def matrix(self, shape):
@@ -90,13 +111,14 @@ class _FinDiffUniform(_FinDiffBase):
         self.spacing = spacing
         self.acc = acc
         coef_schemes = coefficients(self.order, acc)
+
         self.forward = coef_schemes["forward"]
         self.backward = coef_schemes["backward"]
         self.center = coef_schemes["center"]
 
     def __call__(self, f):
         f = self.guard_valid_target(f)
-        npts = f.shape[self.axis]
+        npts = int(f.shape[self.axis])
         fd = jnp.zeros_like(f)
         num_bndry_points = len(self.center["coefficients"]) // 2
 
@@ -112,29 +134,35 @@ class _FinDiffUniform(_FinDiffBase):
     def _apply_backward_coefs(self, f, fd, npts, num_bndry_points):
         weights = self.backward["coefficients"]
         offsets = self.backward["offsets"]
-        ref_slice = slice(npts - num_bndry_points, npts, 1)
-        off_slices = [
-            self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
-        ]
-        return self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+
+        ref_start = npts - num_bndry_points
+        ref_size = num_bndry_points
+
+        return self.apply_to_array(
+            fd, f, weights, offsets, ref_start, ref_size, self.axis
+        )
 
     def _apply_forward_coefs(self, f, fd, npts, num_bndry_points):
         weights = self.forward["coefficients"]
         offsets = self.forward["offsets"]
-        ref_slice = slice(0, num_bndry_points, 1)
-        off_slices = [
-            self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
-        ]
-        return self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+
+        ref_start = 0
+        ref_size = num_bndry_points
+
+        return self.apply_to_array(
+            fd, f, weights, offsets, ref_start, ref_size, self.axis
+        )
 
     def _apply_central_coefs(self, f, fd, npts, num_bndry_points):
         weights = self.center["coefficients"]
         offsets = self.center["offsets"]
-        ref_slice = slice(num_bndry_points, npts - num_bndry_points, 1)
-        off_slices = [
-            self.shift_slice(ref_slice, offsets[k], npts) for k in range(len(offsets))
-        ]
-        return self.apply_to_array(fd, f, weights, off_slices, ref_slice, self.axis)
+
+        ref_start = num_bndry_points
+        ref_size = npts - 2 * num_bndry_points
+
+        return self.apply_to_array(
+            fd, f, weights, offsets, ref_start, ref_size, self.axis
+        )
 
     def write_matrix_entries(self, mat, shape):
         long_indices_nd = get_long_indices_for_all_grid_points_as_ndarray(shape)
