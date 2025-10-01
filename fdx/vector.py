@@ -87,8 +87,9 @@ class Gradient(VectorOperator):
 
         :param f:  ``jax.Array`` Array to apply the gradient to. It represents a scalar function,
                 so it must have N axes for the N independent variables.
-        :param axis: int
-                The axis along which to apply the gradient. Default is 0.
+        :param axis: Optional[int]
+                If None (default), compute the full gradient (all partial derivatives).
+                If an integer, compute the derivative along the specified axis only.
 
         :param has_batch: bool
                 If True, the first axis of f is considered a batch dimension.
