@@ -102,7 +102,7 @@ def test_gradient_1d_multiple_sines():
 
         print(f"{case['name']}: coefficients = {a_coeffs}, max error = {max_error:.2e}")
 
-        assert (actual_grad - expected_grad).mean() < 1e-2, (
+        assert jnp.mean(jnp.abs(actual_grad - expected_grad)) < 1e-2, (
             f"Gradient does not match expected for {case['name']}"
         )
 
