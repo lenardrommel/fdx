@@ -34,7 +34,7 @@ def get_long_indices_for_all_grid_points_as_ndarray(
 def get_long_indices_for_all_grid_points_as_1d_array(
     shape: Sequence[int],
 ) -> jnp.ndarray:
-    return jnp.arange(jnp.prod(*shape), dtype=jnp.int64)
+    return jnp.arange(jnp.prod(jnp.array(shape)), dtype=jnp.int64)
 
 
 def get_list_of_multiindex_tuples(shape: Sequence[int]) -> List[Tuple[int, ...]]:
