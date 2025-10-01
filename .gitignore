@@ -95,6 +95,9 @@ ENV/
 .spyderproject
 .spyproject
 
+# Pyproject toml
+pyproject.toml
+
 # Rope project settings
 .ropeproject
 

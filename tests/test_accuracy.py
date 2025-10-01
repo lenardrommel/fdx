@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from jax import grad
 from jax import numpy as jnp
 
@@ -8,8 +9,6 @@ def test_iterative_accuracy():
     ns = jnp.logspace(2, 3, 10)
 
     def compute_errs(acc, plot=False):
-        import matplotlib.pyplot as plt
-
         errs_a = []
         errs_b = []
         errs_c = []

@@ -12,11 +12,11 @@ class Diff(_Diff):
         Examples
         --------
         Set up grid (equidistant here):
-            >>> import numpy as np
-            >>> x = np.linspace(0, 10, 100)
+            >>> from jax import numpy as jnp
+            >>> x = jnp.linspace(0, 10, 100)
 
         The array to differentiate
-            >>> f = np.sin(x) # as an example
+            >>> f = jnp.sin(x) # as an example
 
         Define the first derivative:
             >>> from findiff import Diff
@@ -31,10 +31,10 @@ class Diff(_Diff):
             >>> d2f_dx2 = d2_dx2(f)
 
         In multiple dimensions with meshed grids, the usage is accordingly:
-            >>> x = y = z = np.linspace(0, 10, 100)
+            >>> x = y = z = jnp.linspace(0, 10, 100)
             >>> dx = dy = dz = x[1] - x[0]
-            >>> X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
-            >>> f = np.sin(X) * np.sin(Y) * np.sin(Z)
+            >>> X, Y, Z = jnp.meshgrid(x, y, z, indexing='ij')
+            >>> f = jnp.sin(X) * jnp.sin(Y) * jnp.sin(Z)
             >>> d_dx = Diff(0)
             >>> d_dy = Diff(1)
             >>> d_dz = Diff(2)

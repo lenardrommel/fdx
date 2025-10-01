@@ -1,3 +1,5 @@
+# findiff.py
+
 from jax import numpy as jnp
 from jax.scipy import sparse
 

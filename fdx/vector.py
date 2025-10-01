@@ -1,3 +1,8 @@
+# vector.py
+
+from functools import partial
+from typing import Any, List, Optional, Union
+
 import jax
 from jax import numpy as jnp
 from linox import LinearOperator
@@ -10,7 +15,7 @@ class VectorOperator:
     Shall not be instantiated directly, but through the child classes.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         """Constructor for the VectorOperator base class.
 
         kwargs:
@@ -48,7 +53,7 @@ class VectorOperator:
                 FinDiff((k, coords[k], 1), **kwargs) for k in range(self.ndims)
             ]
 
-    def __get_dimension(self, coords):
+    def __get_dimension(self, coords: List[jnp.ndarray]) -> int:
         return len(coords)
 
 
@@ -71,31 +76,49 @@ class Gradient(VectorOperator):
                      accuracy order, must be positive integer, default is 2
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, f):
+    def __call__(
+        self, f: jnp.ndarray, axis: Optional[int] = None, has_batch: bool = False
+    ) -> jnp.ndarray:
         """
         Applies the N-dimensional gradient to the array f.
 
-        :param f:  ``numpy.ndarray``
-
-                Array to apply the gradient to. It represents a scalar function,
+        :param f:  ``jax.Array`` Array to apply the gradient to. It represents a scalar function,
                 so it must have N axes for the N independent variables.
+        :param axis: Optional[int]
+                If None (default), compute the full gradient (all partial derivatives).
+                If an integer, compute the derivative along the specified axis only.
 
-        :returns: ``numpy.ndarray``
+        :param has_batch: bool
+                If True, the first axis of f is considered a batch dimension.
+
+
+        :returns: ``jax.Array``
 
                 The gradient of f, which has N+1 axes, i.e. it is
                 an array of N arrays of N axes each.
 
         """
-
         if not isinstance(f, jnp.ndarray):
             raise TypeError("Function to differentiate must be jnp.ndarray")
 
-        if len(f.shape) != self.ndims:
+        if len(f.shape) != self.ndims and axis is None:
             raise ValueError("Gradients can only be applied to scalar functions")
 
+        if axis is None:
+            parts = [comp(f, acc=self.acc) for comp in self.components]
+            if has_batch:
+                return jnp.stack(parts, axis=1)
+            else:
+                return jnp.stack(parts, axis=0)
+
+        axis = int(axis) % f.ndim
+        comp_axis = 0
+        f_moved = jnp.moveaxis(f, axis, comp_axis)
+        df_moved = self.components[comp_axis](f_moved, acc=self.acc)
+        return jnp.moveaxis(df_moved, comp_axis, axis)
         result = []
         for k in range(self.ndims):
             d_dxk = self.components[k]
@@ -125,10 +148,10 @@ class Divergence(VectorOperator):
 
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, f):
+    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """
         Applies the divergence to the array f.
 
@@ -187,7 +210,7 @@ class Curl(VectorOperator):
 
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
         if self.ndims != 3:
@@ -195,7 +218,7 @@ class Curl(VectorOperator):
                 f"Curl operation is only defined in 3 dimensions. {self.ndims} were given."
             )
 
-    def __call__(self, f):
+    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """
         Applies the curl to the array f.
 
@@ -238,14 +261,14 @@ class Curl(VectorOperator):
 
 
 class Laplacian(VectorOperator):
-    def __init__(self, h=None, acc=2):
+    def __init__(self, h: Optional[List[float]] = None, acc: int = 2) -> None:
         h = h or [1.0]
         h = wrap_in_ndarray(h)
 
         self._parts = [FinDiff((k, h[k], 2), acc=acc) for k in range(len(h))]
         super().__init__(h=h, acc=acc)
 
-    def __call__(self, f):
+    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """
         Applies the Laplacian to the array f.
 
@@ -266,7 +289,7 @@ class Laplacian(VectorOperator):
         return laplace_f
 
 
-def wrap_in_ndarray(value):
+def wrap_in_ndarray(value: Union[jnp.ndarray, List[float]]) -> jnp.ndarray:
     """Wraps the argument in a numpy.ndarray.
 
     If value is a scalar, it is converted in a list first.
