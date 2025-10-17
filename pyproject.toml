@@ -19,7 +19,7 @@ dependencies = [
     "findiff",
     "scipy",
     "sympy",
-    "linox @ git+https://github.com/2bys/linox.git",
+    "linox @ git+https://github.com/lenardrommel/linox.git",
 ]
 
 requires-python = ">=3.8"
