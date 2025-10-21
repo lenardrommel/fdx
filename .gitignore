@@ -91,6 +91,14 @@ celerybeat-schedule
 venv/
 ENV/
 
+*/__pycache__/
+__pycache__/*
+*/*.py[cod]
+*/*.pyc
+*/*.pyo
+*/*.pyd
+
+
 # Spyder project settings
 .spyderproject
 .spyproject

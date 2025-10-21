@@ -10,6 +10,7 @@ from linox._matrix import Diagonal
 from fdx.config import _dtype
 from fdx.findiff import build_differentiator
 from fdx.grids import GridAxis, make_grid
+from typing import List, Optional
 
 
 class FieldOperator(LinearOperator):
@@ -34,7 +35,7 @@ class FieldOperator(LinearOperator):
 class Diff(LinearOperator):
     DEFAULT_ACC = 2
 
-    def __init__(self, dim, axis: GridAxis = None, acc=DEFAULT_ACC):
+    def __init__(self, dim, axis: Optional[GridAxis] = None, acc=DEFAULT_ACC):
         """Initializes a Diff instance.
 
         Parameters
@@ -48,7 +49,7 @@ class Diff(LinearOperator):
         """
         super().__init__(shape=(dim, dim), dtype=_dtype)
 
-        self.children = []
+        self.children: List[LinearOperator] = []
         self._order = 1
         self.dim = dim
         self.acc = acc
@@ -60,10 +61,6 @@ class Diff(LinearOperator):
             self._differentiator = build_differentiator(self.order, axis, acc)
         else:
             self._differentiator = None
-
-    def set_grid(self, grid):
-        super().set_grid(grid)
-        self.set_axis(self.grid.get_axis(self.dim))
 
     def set_axis(self, axis: GridAxis):
         self._axis = axis
@@ -111,7 +108,7 @@ class Diff(LinearOperator):
             self._differentiator = build_differentiator(self.order, self.axis, self.acc)
         return self._differentiator
 
-    def set_grid(self, grid):  # noqa: F811
+    def set_grid(self, grid):
         """Sets the grid for the given differential operator expression.
 
         Parameters
@@ -121,6 +118,14 @@ class Diff(LinearOperator):
             is assumed and the dict specifies the spacings along the required axes.
         """
         self._grid = make_grid(grid)
+        # keep base class informed, if it stores grid state
+        try:
+            super().set_grid(self._grid)
+        except Exception:
+            pass
+        # set axis from the updated grid
+        if self._grid is not None:
+            self.set_axis(self._grid.get_axis(self.dim))
         for child in self.children:
             child.set_grid(self._grid)
 

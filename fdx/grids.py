@@ -1,7 +1,7 @@
 # grids.py
 
 import numbers
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 import jax
 from jax import numpy as jnp
@@ -33,10 +33,10 @@ class NonEquidistantAxis(GridAxis):
 
 class Grid:
     def __init__(self, *axes: GridAxis) -> None:
-        self.axes = {ax.dim: ax for ax in axes}
+        self.axes: Dict[int, GridAxis] = {ax.dim: ax for ax in axes}
 
     def get_axis(self, dim: int) -> Optional[GridAxis]:
-        return self.axes.get(dim)
+        return self.axes.get(int(dim))
 
 
 def make_grid(config_or_grid: Union[Grid, dict]) -> Grid:
@@ -85,7 +85,7 @@ def make_axis(
     if isinstance(config_or_axis, GridAxis):
         return config_or_axis
     if isinstance(config_or_axis, numbers.Number):
-        return EquidistantAxis(dim, spacing=config_or_axis, periodic=periodic)
+        return EquidistantAxis(dim, spacing=float(config_or_axis), periodic=periodic)
     if isinstance(config_or_axis, jax.Array):
         if config_or_axis.size > 1:
             spacing = jnp.diff(config_or_axis)

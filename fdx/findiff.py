@@ -25,10 +25,7 @@ def build_differentiator(order: int, axis: GridAxis, acc):
             return _FinDiffUniformPeriodic(axis.dim, order, axis.spacing, acc)
     elif isinstance(axis, NonEquidistantAxis):
         if not axis.periodic:
-            raise NotImplementedError(
-                "Non-uniform finite differences for non-periodic axes are not yet implemented."
-            )
-            # return _FinDiffNonUniform(axis.dim, order, axis.coords, acc)
+            return _FinDiffNonUniform(axis.dim, order, axis.coords, acc)
         else:
             raise NotImplementedError("Periodic nonuniform axes not yet implemented")
     else:
@@ -238,26 +235,50 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         return Is_off
 
 
-# class _FinDiffNonUniform(_FinDiffBase):
-#     def __init__(self, axis, order, coords, acc):
-#         super().__init__(axis, order)
-#         self.coords = coords
-#         self.acc = acc
-#         self.coef_list = [
-#             coefficients_non_uni(order, self.acc, self.coords, i)
-#             for i in range(len(coords))
-#         ]
+class _FinDiffNonUniform(_FinDiffBase):
+    def __init__(self, axis, order, coords, acc):
+        super().__init__(axis, order)
+        self.coords = coords
+        self.acc = acc
 
+    def __call__(self, y):
+        """Apply a finite-difference derivative on a non-uniform, non-periodic axis.
 
-#     def __call__(self, y):
-#         """The core function to take a partial derivative on a non-uniform grid"""
-#         y = self.guard_valid_target(y)
+        Uses location-dependent coefficients computed from the actual coordinate
+        values (no uniform spacing assumption). Boundary points automatically
+        use appropriate one-sided stencils.
+        """
+        y = self.guard_valid_target(y)
 
-#         dim = self.axis
+        # Move target axis to front for simpler indexing: (n, ...)
+        y_m = jnp.moveaxis(y, self.axis, 0)
+        n = y_m.shape[0]
+        yd_m = jnp.zeros_like(y_m)
 
-#         yd = jnp.zeros_like(y)
+        def body(i, acc_arr):
+            coef = coefficients_non_uni(self.order, self.acc, self.coords, i)
+            ws = coef["coefficients"]  # (k,)
+            offs = coef["offsets"].astype(jnp.int32)  # (k,)
 
-#         ndims = len(y.shape)
+            idxs = i + offs  # (k,)
+            # Gather the stencil along the moved axis (0)
+            stencil_vals = jnp.take(y_m, idxs, axis=0)
+            # Weighted sum across stencil dimension
+            val = jnp.tensordot(ws, stencil_vals, axes=(0, 0))
+            acc_arr = acc_arr.at[i].set(val)
+            return acc_arr
+
+        yd_m = lax.fori_loop(0, n, body, yd_m)
+        # Move axis back to original place
+        return jnp.moveaxis(yd_m, 0, self.axis)
+
+    def write_matrix_entries(self, mat, shape):
+        """Optional: assemble a dense operator matrix.
+
+        For non-uniform grids, coefficients vary per row. To avoid a heavy
+        dense build in the common path, leave this unimplemented for now.
+        """
+        raise NotImplementedError("Matrix assembly for non-uniform grids not implemented")
 #         multi_slice = [slice(None, None)] * ndims
 #         ref_multi_slice = [slice(None, None)] * ndims
 
