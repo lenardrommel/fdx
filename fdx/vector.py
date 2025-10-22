@@ -1,11 +1,8 @@
 # vector.py
 
-from functools import partial
 from typing import Any, List, Optional, Union
 
-import jax
 from jax import numpy as jnp
-from linox import LinearOperator
 
 from .compatible import FinDiff
 
@@ -262,11 +259,11 @@ class Curl(VectorOperator):
 
 class Laplacian(VectorOperator):
     def __init__(self, h: Optional[List[float]] = None, acc: int = 2) -> None:
-        h = h or [1.0]
-        h = wrap_in_ndarray(h)
+        h_list = h or [1.0]
+        h_arr = wrap_in_ndarray(h_list)
 
-        self._parts = [FinDiff((k, h[k], 2), acc=acc) for k in range(len(h))]
-        super().__init__(h=h, acc=acc)
+        self._parts = [FinDiff((k, h_arr[k], 2), acc=acc) for k in range(len(h_arr))]
+        super().__init__(h=h_arr, acc=acc)
 
     def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """

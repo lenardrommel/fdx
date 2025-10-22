@@ -16,10 +16,8 @@ dependencies = [
     "jax",
     "pytest",
     "numpy",
-    "findiff",
     "scipy",
     "sympy",
-    "linox @ git+https://github.com/lenardrommel/linox.git",
 ]
 
 requires-python = ">=3.8"
