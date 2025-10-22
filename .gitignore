@@ -101,7 +101,7 @@ __pycache__/*
 
 FDCalculus/
 findiff/
-
+coefs.*
 # Spyder project settings
 .spyderproject
 .spyproject
