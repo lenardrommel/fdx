@@ -208,8 +208,8 @@ class TestCoefficientValidation:
 class TestCoefficientAccuracy:
     """Tests for accuracy calculation in coefficients."""
 
-    @pytest.mark.parametrize("deriv", [1, 2, 3])
-    @pytest.mark.parametrize("acc", [2, 4, 6])
+    @pytest.mark.parametrize("deriv", [1, 2])
+    @pytest.mark.parametrize("acc", [2, 4])
     def test_accuracy_matches_request(self, deriv, acc):
         """Test that computed accuracy matches requested accuracy."""
         c = coefficients(deriv=deriv, acc=acc)

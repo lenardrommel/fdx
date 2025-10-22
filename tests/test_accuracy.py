@@ -1,3 +1,5 @@
+# test_accuracy.py
+
 import matplotlib.pyplot as plt
 from jax import grad
 from jax import numpy as jnp
@@ -51,7 +53,6 @@ def test_iterative_accuracy():
             plt.xlabel("Number of grid points")
             plt.ylabel("Relative error")
             plt.legend()
-            plt.show()
 
         slope_a = jnp.abs(loglog_slope(ns, jnp.array(errs_a)))
         slope_b = jnp.abs(loglog_slope(ns, jnp.array(errs_b)))
@@ -75,6 +76,3 @@ def test_iterative_accuracy():
 def loglog_slope(x, y):
     slope, intercept = jnp.polyfit(jnp.log(x), jnp.log(y), 1)
     return slope
-
-
-test_iterative_accuracy()

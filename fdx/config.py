@@ -1,6 +1,9 @@
 from jax import numpy as jnp
 
-_dtype = jnp.float32
+# Use float64 by default for coefficient calculations to match findiff
+# and ensure high-accuracy finite-difference stencils, especially for
+# higher derivatives and tighter tolerances.
+_dtype = jnp.float64
 
 
 def set_dtype(dtype: jnp.dtype) -> None:
