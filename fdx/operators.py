@@ -7,7 +7,7 @@ without depending on external linear-operator packages.
 
 import numbers
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from jax import numpy as jnp
 
@@ -71,7 +71,7 @@ class Expression(ABC):
 class FieldOperator(Expression):
     """Pointwise multiplication operator."""
 
-    def __init__(self, value) -> None:
+    def __init__(self, value: Union[float, jnp.ndarray]) -> None:
         super().__init__()
         self.value = value
 
@@ -86,7 +86,7 @@ class FieldOperator(Expression):
         siz = int(jnp.prod(jnp.array(shape)))
         if isinstance(self.value, jnp.ndarray):
             diag_values = self.value.reshape(-1)
-        elif isinstance(self.value, numbers.Number):
+        elif isinstance(self.value, (int, float)):
             diag_values = jnp.full((siz,), float(self.value))
         else:
             raise TypeError("Unsupported field value type for matrix()")
@@ -94,10 +94,10 @@ class FieldOperator(Expression):
 
 
 class ScalarOperator(FieldOperator):
-    def __init__(self, value):
-        if not isinstance(value, numbers.Number):
+    def __init__(self, value: float):
+        if not isinstance(value, (int, float)):
             raise ValueError(f"Expected number, got {type(value)}")
-        super().__init__(value)
+        super().__init__(float(value))
 
     def matrix(self, shape):
         siz = int(jnp.prod(jnp.array(shape)))

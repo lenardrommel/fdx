@@ -1,6 +1,5 @@
 # grids.py
 
-import numbers
 from typing import Dict, Optional, Union
 
 import jax
@@ -9,7 +8,7 @@ from jax import numpy as jnp
 
 class GridAxis:
     def __init__(self, dim: int, periodic: bool = False) -> None:
-        if not isinstance(dim, numbers.Number) or int(dim) != dim:
+        if not isinstance(dim, int):
             raise ValueError("Dimension must be an integer")
         if dim < 0:
             raise ValueError("Dimension must be >= 0.")
@@ -39,7 +38,7 @@ class Grid:
         return self.axes.get(int(dim))
 
 
-def make_grid(config_or_grid: Union[Grid, dict]) -> Grid:
+def make_grid(config_or_grid: Union[Grid, dict, None]) -> Optional[Grid]:
     """Makes or returns a grid based on configuration or an actual Grid instance.
 
     Historically, the API allowed to specify grid using a variety of
@@ -70,7 +69,7 @@ def make_grid(config_or_grid: Union[Grid, dict]) -> Grid:
 
 def make_axis(
     dim: int,
-    config_or_axis: Union[GridAxis, numbers.Number, jax.Array],
+    config_or_axis: Union[GridAxis, float, int, jax.Array],
     periodic: bool = False,
 ) -> GridAxis:
     """Makes or returns a grid axis based on configuration or an actual GridAxis instance.
@@ -84,7 +83,7 @@ def make_axis(
 
     if isinstance(config_or_axis, GridAxis):
         return config_or_axis
-    if isinstance(config_or_axis, numbers.Number):
+    if isinstance(config_or_axis, (int, float)):
         return EquidistantAxis(dim, spacing=float(config_or_axis), periodic=periodic)
     if isinstance(config_or_axis, jax.Array):
         if config_or_axis.size > 1:

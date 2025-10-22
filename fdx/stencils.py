@@ -38,7 +38,7 @@ class StencilSet:
         if not hasattr(idx0, "__len__"):
             idx0 = (idx0,)
 
-        typ = []
+        typ: list[str] = []
         for axis in range(len(self.shape)):
             if idx0[axis] == 0:
                 typ.append("L")
@@ -46,9 +46,9 @@ class StencilSet:
                 typ.append("H")
             else:
                 typ.append("C")
-        typ = tuple(typ)
+        typ_tuple = tuple(typ)
 
-        stl = self.data[typ]
+        stl = self.data[typ_tuple]
         idx0 = jnp.array(idx0)
         du = 0.0
         for o, c in stl.items():
@@ -70,20 +70,17 @@ class StencilSet:
         assert self.shape == u.shape
 
         ndims = len(u.shape)
+        indices: list[tuple[int, ...]]
         if ndims == 1:
-            indices = list(range(len(u)))
+            indices = [(i,) for i in range(u.shape[0])]
         else:
-            axes_indices = []
-            for axis in range(ndims):
-                axes_indices.append(list(range(u.shape[axis])))
-
-            axes_indices = tuple(axes_indices)
+            axes_indices = [list(range(u.shape[axis])) for axis in range(ndims)]
             indices = list(product(*axes_indices))
 
         du = jnp.zeros_like(u)
 
         for idx in indices:
-            du[idx] = du.at[idx].set(self.apply(u, idx))
+            du = du.at[idx].set(self.apply(u, idx))
 
         return du
 
@@ -91,7 +88,7 @@ class StencilSet:
         matrix = self.diff_op.matrix(self.shape)
 
         for pt in self.char_pts:
-            char_point_stencil = {}
+            char_point_stencil: dict[tuple[int, ...], float] = {}
             self.data[pt] = char_point_stencil
 
             index_tuple_for_char_pt = self._typical_index_tuple_for_char_point(pt)
@@ -105,7 +102,7 @@ class StencilSet:
                     to_index_tuple(long_offset_ind, self.shape), dtype=int
                 )
                 offset_ind_tuple -= jnp.array(index_tuple_for_char_pt, dtype=int)
-                char_point_stencil[tuple(offset_ind_tuple)] = row[0, long_offset_ind]
+                char_point_stencil[tuple(offset_ind_tuple)] = float(row[0, long_offset_ind])
 
     def _typical_index_tuple_for_char_point(self, pt):
         index_tuple_for_char_pt = []
@@ -150,9 +147,9 @@ class Stencil:
             return self._apply_at_single_point(f, at)
         if at is None and on is not None:
             if isinstance(on[0], slice):
-                return self._apply_on_multi_slice(f, on)
+                return self.apply_on_multi_slice(f, on)
             else:
-                return self._apply_on_mask(f, on)
+                return self.apply_on_mask(f, on)
         raise Exception("Cannot specify both *at* and *on* parameters.")
 
     def __str__(self):
@@ -217,6 +214,23 @@ class Stencil:
         offset_mask = offset_mask.at[tuple(mslice_base)].set(mask[tuple(mslice_off)])
         return offset_mask
 
+    def _canonic_slice(self, sl: slice, length: int) -> slice:
+        start = sl.start if sl.start is not None else 0
+        if start < 0:
+            start = length - start
+        stop = sl.stop if sl.stop is not None else 0
+        if stop < 0:
+            stop = length - start
+        return slice(start, stop)
+
+    @property
+    def values(self):
+        return self.sol_as_dict
+
+    @property
+    def accuracy(self):
+        return self._calc_accuracy()
+
     def _calc_accuracy(self):
         tol = 1.0e-6
         deriv_order = 0
@@ -263,6 +277,20 @@ class Stencil:
                 if len(rows) == len(self.offsets):
                     return jnp.array(rows), used_taylor_terms
         raise Exception("Not enough terms. Try to increase max_order.")
+
+    def _system_matrix_row(self, powers):
+        row = []
+        for a in self.offsets:
+            value = 1
+            for i, power in enumerate(powers):
+                value *= a[i] ** power
+            row.append(value)
+        return row
+
+    def _multinomial_powers(self, the_sum):
+        """Returns all tuples of a given dimension that add up to the_sum."""
+        all_combs = list(product(range(the_sum + 1), repeat=self.ndims))
+        return [tpl for tpl in all_combs if sum(tpl) == the_sum]
 
     def _rows_are_linearly_independent(self, matrix):
         """Checks the linear independence of the rows of a matrix."""
