@@ -94,10 +94,13 @@ ENV/
 */__pycache__/
 __pycache__/*
 */*.py[cod]
+.DS_Store
 */*.pyc
 */*.pyo
 */*.pyd
 
+FDCalculus/
+findiff/
 
 # Spyder project settings
 .spyderproject
