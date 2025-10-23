@@ -99,6 +99,10 @@ __pycache__/*
 */*.pyo
 */*.pyd
 
+# Logo
+!fdx.png
+
+
 FDCalculus/
 findiff/
 coefs.*
