@@ -5,16 +5,7 @@
 __pycache__/
 */__pycache__/
 **/__pycache__/
-*.py[cod]
-*/*.py[cod]
-**/*.py[cod]
-*/*.pyc
-**/*.pyc
-*/*.pyo
-**/*.pyo
-*/*.pyd
-**/*.pyd
-*$py.class
+
 
 # C extensions
 *.so
@@ -113,15 +104,13 @@ __pycache__/*
 !fdx.png
 
 
-FDCalculus/
-findiff/
+
 coefs.*
 # Spyder project settings
 .spyderproject
 .spyproject
 
-# Pyproject toml
-pyproject.toml
+
 
 # Rope project settings
 .ropeproject

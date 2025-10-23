@@ -1,0 +1,120 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fdx"
+version = "0.1.1"
+authors = [
+    { name = "Lenard Rommel" },
+]
+
+description = "A Python package for finite difference derivatives in JAX."
+readme = "README.md"
+
+dependencies = [
+    "jax",
+    "pytest",
+    "numpy",
+    "scipy",
+    "sympy",
+]
+
+requires-python = ">=3.8"
+keywords = ["finite-differences", "numerical-derivatives", "scientific-computing"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+
+[tool.setuptools.packages.find]
+include = ["fdx"]
+
+
+[tool.setuptools.dynamic]
+version = { attr = "fdx.__version__" }
+
+[tool.pytest.ini_options]
+addopts = [
+    "--strict-markers"
+]
+
+
+
+[tool.tox]
+requires = ["tox>=4.21"]
+env_list = [
+    "fmt", "lint",
+    "3.13", "3.12", "3.11", "3.10", "3.9", "3.8",
+]
+
+
+[tool.tox.env_run_base]
+wheel_build_env = ".pkg"
+deps = [
+    "pytest",
+    "ipykernel",
+    "nbclient",
+    "matplotlib",
+]
+commands = [
+    ["pytest"],
+]
+
+[tool.tox.env.docs]
+deps = [
+    "sphinx",
+    "-r docs/requirements.txt",
+]
+commands = [
+    ["sphinx-build", "-M", "html", "docs/source", "docs/build/"],
+]
+
+[tool.tox.env.doctest]
+deps = [
+    "sphinx",
+    "-r docs/requirements.txt",
+]
+commands = [
+    ["sphinx-build", "-M", "doctest", "docs/source", "docs/build/"],
+]
+
+[tool.tox.env.fmt]
+package = "skip"
+deps = [
+    "ruff",
+]
+commands = [
+    ["ruff", "format", "--check", { replace = "posargs", default = ["."], extend = true }],
+]
+
+[tool.tox.env.lint]
+package = "skip"
+deps = [
+    "ruff",
+]
+commands = [
+    ["ruff", "check", "--no-fix", { replace = "posargs", default = ["."], extend = true }],
+]
+
+[tool.ruff]
+line-length = 88
+lint.extend-select = [
+    "B", # flake8-bugbear
+    "I", # isort
+    "UP", # pyupgrade
+]
+extend-exclude = [
+    "docs/source/**/*.ipynb",
+]
+
+
