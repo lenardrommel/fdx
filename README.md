@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="fdx.png" alt="fdx logo" width="180" />
+</div>
+
 # fdx — Finite Differences in JAX
 
 fdx is a JAX-first reimplementation of key features from the excellent findiff package — providing finite-difference derivatives, vector calculus operators, and matrix/stencil representations, all compatible with JAX arrays and transformations.

@@ -1,4 +1,5 @@
 from fdx.interface import Diff
+from fdx.operators import FieldOperator, Identity
 
 
 def FinDiff(*args, **kwargs):
@@ -23,3 +24,17 @@ def FinDiff(*args, **kwargs):
         return fd
 
     return diff_from_tuple(args)
+
+
+# Aliases for compatibility with findiff API
+class Coefficient(FieldOperator):
+    """Variable coefficient operator (pointwise multiplication).
+
+    Compatible alias with findiff's Coefficient; wraps FieldOperator.
+    """
+
+    pass
+
+
+Coef = Coefficient
+Id = Identity
