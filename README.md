@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="fdx.png" alt="fdx logo" width="180" />
+  <img src="fdx_logo.png" alt="fdx logo" width="180" />
 </div>
 
 # fdx — Finite Differences in JAX
