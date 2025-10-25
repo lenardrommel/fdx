@@ -4,9 +4,9 @@
 
 # fdx — Finite Differences in JAX
 
-fdx is a JAX-first reimplementation of key features from the excellent findiff package — providing finite-difference derivatives, vector calculus operators, and matrix/stencil representations, all compatible with JAX arrays and transformations.
+fdx is a JAX-first reimplementation of key features from the excellent [findiff](https://github.com/maroba/findiff) package — providing finite-difference derivatives, vector calculus operators, and matrix/stencil representations, all compatible with JAX arrays and transformations.
 
-The project aims to be small, predictable, and well-tested, while keeping the essential capabilities most users need.
+
 
 ## Highlights
 
