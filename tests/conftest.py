@@ -1,7 +1,25 @@
 """Shared fixtures and configuration for fdx tests."""
 
+import warnings
+
 import jax.numpy as jnp
 import pytest
+
+# Filter out Pydantic warnings from third-party dependencies
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    module="pydantic._internal._generate_schema",
+    message=".*UnsupportedFieldAttributeWarning.*",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="The 'repr' attribute with value .* was provided to the Field\\(\\) function",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="The 'frozen' attribute with value .* was provided to the Field\\(\\) function",
+)
 
 
 @pytest.fixture
