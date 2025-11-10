@@ -47,6 +47,10 @@ version = { attr = "fdx.__version__" }
 addopts = [
     "--strict-markers"
 ]
+filterwarnings = [
+    "ignore:The 'repr' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
+    "ignore:The 'frozen' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
+]
 
 
 
