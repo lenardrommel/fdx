@@ -1,4 +1,23 @@
-.venv
+# Ignore everything by default
+*
+
+# But don't ignore directories (needed so Git can descend into them)
+!*/
+
+# Allowlist the folders you want tracked
+!fdx/
+!examples/
+!tests/
+!docs/
+!.gitignore
+!.pre-commit-config.yaml
+!README.md
+!LICENSE
+!pyproject.toml
+!setup.py
+!setup.cfg
+!setup.py
+
 *.egg-info
 .vscode/*
 # Byte-compiled / optimized / DLL files
@@ -104,6 +123,8 @@ __pycache__/*
 !fdx.png
 
 
+FDCalculus/*
+findiff/*
 
 coefs.*
 # Spyder project settings
@@ -127,3 +148,4 @@ coefs.*
 # Visual Studio Code
 .vscode
 venv2
+
