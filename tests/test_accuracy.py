@@ -1,8 +1,7 @@
 # test_accuracy.py
 
-import matplotlib.pyplot as plt
+import jax.numpy as jnp
 from jax import grad
-from jax import numpy as jnp
 
 from fdx import Diff
 
@@ -10,7 +9,7 @@ from fdx import Diff
 def test_iterative_accuracy():
     ns = jnp.logspace(2, 3, 10)
 
-    def compute_errs(acc, plot=False):
+    def compute_errs(acc):
         errs_a = []
         errs_b = []
         errs_c = []
@@ -44,29 +43,19 @@ def test_iterative_accuracy():
             errs_c.append(err_c)
             errs_d.append(err_d)
 
-        if plot:
-            plt.loglog(ns, errs_a, "-x", label="D^2f")
-            plt.loglog(ns, errs_b, "-", label="D(D(f))")
-            plt.loglog(ns, errs_c, "-", label="D*D*f")
-            plt.loglog(ns, errs_d, "-o", label="grad(f)")
-            plt.grid()
-            plt.xlabel("Number of grid points")
-            plt.ylabel("Relative error")
-            plt.legend()
-
         slope_a = jnp.abs(loglog_slope(ns, jnp.array(errs_a)))
         slope_b = jnp.abs(loglog_slope(ns, jnp.array(errs_b)))
         slope_c = jnp.abs(loglog_slope(ns, jnp.array(errs_c)))
         return slope_a, slope_b, slope_c
 
-    slope_a, slope_b, slope_c = compute_errs(2, plot=True)
+    slope_a, slope_b, slope_c = compute_errs(2)
 
     assert jnp.abs(slope_a - 2) < 0.2
     # applying operators iteratively should reduce the order by one at a time:
     assert jnp.abs(slope_b - 1) < 0.2
     assert jnp.abs(slope_c - 2) < 0.2
 
-    slope_a, slope_b, slope_c = compute_errs(4, plot=False)
+    slope_a, slope_b, slope_c = compute_errs(4)
     assert jnp.abs(slope_a - 4) < 0.2
     # applying operators iteratively should reduce the order by one at a time:
     assert jnp.abs(slope_b - 3) < 0.4

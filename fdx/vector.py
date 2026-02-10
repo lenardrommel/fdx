@@ -2,6 +2,7 @@
 
 from typing import Any, List, Optional, Union
 
+import jax
 from jax import numpy as jnp
 
 from .compatible import FinDiff
@@ -101,27 +102,40 @@ class Gradient(VectorOperator):
         if not isinstance(f, jnp.ndarray):
             raise TypeError("Function to differentiate must be jnp.ndarray")
 
-        if len(f.shape) != self.ndims and axis is None:
-            raise ValueError("Gradients can only be applied to scalar functions")
+        if has_batch:
+            # scalar field per batch item must have exactly ndims axes
+            if axis is None:
+                if f.ndim != self.ndims + 1:
+                    raise ValueError(
+                        "With has_batch=True and axis=None, expected shape (batch, *spatial)"
+                    )
 
+                # vmap over batch, compute full gradient on each sample
+                def grad_one(sample):
+                    parts = [
+                        comp(sample, acc=self.acc) for comp in self.components
+                    ]  # each: (*spatial)
+                    return jnp.stack(parts, axis=0)  # (ndims, *spatial)
+
+                return jax.vmap(grad_one)(f)  # (batch, ndims, *spatial)
+
+            # axis derivative with batch: axis refers to spatial axis (0..ndims-1)
+            s_axis = int(axis) % self.ndims
+
+            def deriv_one(sample):
+                return self.components[s_axis](sample, acc=self.acc)  # (*spatial)
+
+            return jax.vmap(deriv_one)(f)  # (batch, *spatial)
+
+        # no batch
         if axis is None:
+            if f.ndim != self.ndims:
+                raise ValueError("Gradients can only be applied to scalar functions")
             parts = [comp(f, acc=self.acc) for comp in self.components]
-            if has_batch:
-                return jnp.stack(parts, axis=1)
-            else:
-                return jnp.stack(parts, axis=0)
+            return jnp.stack(parts, axis=0)  # (ndims, *spatial)
 
-        axis = int(axis) % f.ndim
-        comp_axis = 0
-        f_moved = jnp.moveaxis(f, axis, comp_axis)
-        df_moved = self.components[comp_axis](f_moved, acc=self.acc)
-        return jnp.moveaxis(df_moved, comp_axis, axis)
-        result = []
-        for k in range(self.ndims):
-            d_dxk = self.components[k]
-            result.append(d_dxk(f, acc=self.acc))
-
-        return jnp.array(result)
+        s_axis = int(axis) % self.ndims
+        return self.components[s_axis](f, acc=self.acc)  # (*spatial)
 
 
 class Divergence(VectorOperator):
@@ -284,6 +298,72 @@ class Laplacian(VectorOperator):
             laplace_f = laplace_f + part(f)
 
         return laplace_f
+
+
+class Jacobian(VectorOperator):
+    """
+    Jacobian of a vector-valued field with respect to spatial variables.
+
+    No batch:  u.shape = (*spatial, *components)  ->  J.shape = (ndims, *spatial, *components)
+    Batch:     u.shape = (batch, *spatial, *components) -> J.shape = (batch, ndims, *spatial, *components)
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+
+    def __call__(self, u: jnp.ndarray, has_batch: bool = False) -> jnp.ndarray:
+        if not isinstance(u, jnp.ndarray):
+            raise TypeError("Function to differentiate must be jnp.ndarray")
+
+        if has_batch:
+            if u.ndim < self.ndims + 1:
+                raise ValueError("Expected u.shape = (batch, *spatial, *components)")
+            batch = u.shape[0]
+            spatial_shape = u.shape[1 : 1 + self.ndims]
+            comp_shape = u.shape[1 + self.ndims :]
+            if len(spatial_shape) != self.ndims:
+                raise ValueError("Spatial dims do not match operator ndims")
+
+            # flatten components: (B, *S, *C) -> (B, *S, Cflat)
+            u_flat = u.reshape(batch, *spatial_shape, -1)
+            # move component axis in front for vmap: (B, *S, C) -> (B, C, *S)
+            u_flat = jnp.moveaxis(u_flat, -1, 1)
+
+            def jac_one_component(field_1comp):
+                # field_1comp: (*S)
+                parts = [
+                    self.components[ax](field_1comp, acc=self.acc)
+                    for ax in range(self.ndims)
+                ]
+                return jnp.stack(parts, axis=0)  # (ndims, *S)
+
+            # vmap over components, then over batch
+            J = jax.vmap(lambda u_c: jax.vmap(jac_one_component)(u_c))(u_flat)
+            # J: (B, C, ndims, *S)
+            J = jnp.moveaxis(J, 1, -1)  # (B, ndims, *S, C)
+            return J.reshape(batch, self.ndims, *spatial_shape, *comp_shape)
+
+        else:
+            if u.ndim < self.ndims:
+                raise ValueError("Expected u.shape = (*spatial, *components)")
+            spatial_shape = u.shape[: self.ndims]
+            comp_shape = u.shape[self.ndims :]
+            if len(spatial_shape) != self.ndims:
+                raise ValueError("Spatial dims do not match operator ndims")
+
+            u_flat = u.reshape(*spatial_shape, -1)  # (*S, Cflat)
+            u_flat = jnp.moveaxis(u_flat, -1, 0)  # (Cflat, *S)
+
+            def jac_one_component(field_1comp):
+                parts = [
+                    self.components[ax](field_1comp, acc=self.acc)
+                    for ax in range(self.ndims)
+                ]
+                return jnp.stack(parts, axis=0)  # (ndims, *S)
+
+            Jc = jax.vmap(jac_one_component)(u_flat)  # (Cflat, ndims, *S)
+            J = jnp.moveaxis(Jc, 0, -1)  # (ndims, *S, Cflat)
+            return J.reshape(self.ndims, *spatial_shape, *comp_shape)
 
 
 def wrap_in_ndarray(value: Union[jnp.ndarray, List[float]]) -> jnp.ndarray:

@@ -4,7 +4,7 @@ from fdx.coefs import coefficients
 from fdx.compatible import Coef, Coefficient, FinDiff, Id
 from fdx.config import set_dtype
 from fdx.interface import Diff
-from fdx.vector import Curl, Divergence, Gradient, Laplacian
+from fdx.vector import Curl, Divergence, Gradient, Laplacian, Jacobian
 
 __all__ = [
     "set_dtype",
@@ -18,4 +18,5 @@ __all__ = [
     "Divergence",
     "Gradient",
     "Laplacian",
+    "Jacobian",
 ]
