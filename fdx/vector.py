@@ -1,4 +1,4 @@
-# vector.py
+"""Vector calculus operators built from scalar finite differences."""
 
 from typing import Any, List, Optional, Union
 
@@ -10,6 +10,7 @@ from .compatible import FinDiff
 
 class VectorOperator:
     """Base class for all vector differential operators.
+
     Shall not be instantiated directly, but through the child classes.
     """
 
@@ -27,15 +28,12 @@ class VectorOperator:
         Either specify "h" or "coords", not both.
 
         """
-
         if "acc" in kwargs:
             self.acc = kwargs.pop("acc")
         else:
             self.acc = 2
 
-        if (
-            "spac" in kwargs or "h" in kwargs
-        ):  # necessary for backward compatibility 0.5.2 => 0.6
+        if "spac" in kwargs or "h" in kwargs:  # necessary for backward compatibility 0.5.2 => 0.6
             if "spac" in kwargs:
                 kw = "spac"
             else:
@@ -47,9 +45,7 @@ class VectorOperator:
         if "coords" in kwargs:
             coords = kwargs.pop("coords")
             self.ndims = self.__get_dimension(coords)
-            self.components = [
-                FinDiff((k, coords[k], 1), **kwargs) for k in range(self.ndims)
-            ]
+            self.components = [FinDiff((k, coords[k], 1), **kwargs) for k in range(self.ndims)]
 
     def __get_dimension(self, coords: List[jnp.ndarray]) -> int:
         return len(coords)
@@ -60,7 +56,8 @@ class Gradient(VectorOperator):
     The N-dimensional gradient.
 
     .. math::
-        \nabla = \left(\frac{\partial}{\partial x_0}, \frac{\partial}{\partial x_1}, ... , \frac{\partial}{\partial x_{N-1}}\right)
+        \nabla = \left(\frac{\partial}{\partial x_0}, \frac{\partial}{\partial x_1},
+        ... , \frac{\partial}{\partial x_{N-1}}\right)
 
     :param kwargs:  exactly one of *h* and *coords* must be specified
 
@@ -77,9 +74,7 @@ class Gradient(VectorOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def __call__(
-        self, f: jnp.ndarray, axis: Optional[int] = None, has_batch: bool = False
-    ) -> jnp.ndarray:
+    def __call__(self, f: jnp.ndarray, axis: Optional[int] = None, has_batch: bool = False) -> jnp.ndarray:
         """
         Applies the N-dimensional gradient to the array f.
 
@@ -106,15 +101,11 @@ class Gradient(VectorOperator):
             # scalar field per batch item must have exactly ndims axes
             if axis is None:
                 if f.ndim != self.ndims + 1:
-                    raise ValueError(
-                        "With has_batch=True and axis=None, expected shape (batch, *spatial)"
-                    )
+                    raise ValueError("With has_batch=True and axis=None, expected shape (batch, *spatial)")
 
                 # vmap over batch, compute full gradient on each sample
                 def grad_one(sample):
-                    parts = [
-                        comp(sample, acc=self.acc) for comp in self.components
-                    ]  # each: (*spatial)
+                    parts = [comp(sample, acc=self.acc) for comp in self.components]  # each: (*spatial)
                     return jnp.stack(parts, axis=0)  # (ndims, *spatial)
 
                 return jax.vmap(grad_one)(f)  # (batch, ndims, *spatial)
@@ -176,21 +167,15 @@ class Divergence(VectorOperator):
 
         """
         if not isinstance(f, jnp.ndarray) and not isinstance(f, list):
-            raise TypeError(
-                "Function to differentiate must be jnp.ndarray or list of jnp.ndarrays"
-            )
+            raise TypeError("Function to differentiate must be jnp.ndarray or list of jnp.ndarrays")
 
         if len(f.shape) != self.ndims + 1 and f.shape[0] != self.ndims:
-            raise ValueError(
-                "Divergence can only be applied to vector functions of the same dimension"
-            )
+            raise ValueError("Divergence can only be applied to vector functions of the same dimension")
 
         result = jnp.zeros(f.shape[1:])
 
         result = jnp.sum(
-            jnp.stack(
-                [self.components[k](f[k], acc=self.acc) for k in range(self.ndims)]
-            ),
+            jnp.stack([self.components[k](f[k], acc=self.acc) for k in range(self.ndims)]),
             axis=0,
         )
 
@@ -225,9 +210,7 @@ class Curl(VectorOperator):
         super().__init__(**kwargs)
 
         if self.ndims != 3:
-            raise ValueError(
-                f"Curl operation is only defined in 3 dimensions. {self.ndims} were given."
-            )
+            raise ValueError(f"Curl operation is only defined in 3 dimensions. {self.ndims} were given.")
 
     def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
         """
@@ -242,37 +225,34 @@ class Curl(VectorOperator):
                the curl, which is a vector function of N variables, so it's array dimension has N+1 axes
 
         """
-
         if not isinstance(f, jnp.ndarray) and not isinstance(f, list):
-            raise TypeError(
-                "Function to differentiate must be jnp.ndarray or list of jnp.ndarrays"
-            )
+            raise TypeError("Function to differentiate must be jnp.ndarray or list of jnp.ndarrays")
 
         if len(f.shape) != self.ndims + 1 and f.shape[0] != self.ndims:
-            raise ValueError(
-                "Curl can only be applied to vector functions of the three dimensions"
-            )
+            raise ValueError("Curl can only be applied to vector functions of the three dimensions")
 
         result = jnp.zeros(f.shape)
 
-        result = result.at[0].add(
-            self.components[1](f[2], acc=self.acc)
-            - self.components[2](f[1], acc=self.acc)
-        )
-        result = result.at[1].add(
-            self.components[2](f[0], acc=self.acc)
-            - self.components[0](f[2], acc=self.acc)
-        )
-        result = result.at[2].add(
-            self.components[0](f[1], acc=self.acc)
-            - self.components[1](f[0], acc=self.acc)
-        )
+        result = result.at[0].add(self.components[1](f[2], acc=self.acc) - self.components[2](f[1], acc=self.acc))
+        result = result.at[1].add(self.components[2](f[0], acc=self.acc) - self.components[0](f[2], acc=self.acc))
+        result = result.at[2].add(self.components[0](f[1], acc=self.acc) - self.components[1](f[0], acc=self.acc))
 
         return result
 
 
 class Laplacian(VectorOperator):
+    """N-dimensional Laplacian operator for scalar fields."""
+
     def __init__(self, h: Optional[List[float]] = None, acc: int = 2) -> None:
+        """Create a Laplacian operator.
+
+        Parameters
+        ----------
+        h
+            Grid spacings for a uniform grid. If not provided, defaults to `[1.0]`.
+        acc
+            Accuracy order (positive integer).
+        """
         h_list = h or [1.0]
         h_arr = wrap_in_ndarray(h_list)
 
@@ -312,6 +292,22 @@ class Jacobian(VectorOperator):
         super().__init__(**kwargs)
 
     def __call__(self, u: jnp.ndarray, has_batch: bool = False) -> jnp.ndarray:
+        """Compute the Jacobian of a vector-valued field.
+
+        Parameters
+        ----------
+        u
+            Field with shape `(*spatial, *components)` or `(batch, *spatial, *components)`
+            when `has_batch=True`.
+        has_batch
+            Whether the first axis is a batch axis.
+
+        Returns
+        -------
+        jax.Array
+            Jacobian array with shape `(ndims, *spatial, *components)` or
+            `(batch, ndims, *spatial, *components)` when `has_batch=True`.
+        """
         if not isinstance(u, jnp.ndarray):
             raise TypeError("Function to differentiate must be jnp.ndarray")
 
@@ -331,10 +327,7 @@ class Jacobian(VectorOperator):
 
             def jac_one_component(field_1comp):
                 # field_1comp: (*S)
-                parts = [
-                    self.components[ax](field_1comp, acc=self.acc)
-                    for ax in range(self.ndims)
-                ]
+                parts = [self.components[ax](field_1comp, acc=self.acc) for ax in range(self.ndims)]
                 return jnp.stack(parts, axis=0)  # (ndims, *S)
 
             # vmap over components, then over batch
@@ -355,10 +348,7 @@ class Jacobian(VectorOperator):
             u_flat = jnp.moveaxis(u_flat, -1, 0)  # (Cflat, *S)
 
             def jac_one_component(field_1comp):
-                parts = [
-                    self.components[ax](field_1comp, acc=self.acc)
-                    for ax in range(self.ndims)
-                ]
+                parts = [self.components[ax](field_1comp, acc=self.acc) for ax in range(self.ndims)]
                 return jnp.stack(parts, axis=0)  # (ndims, *S)
 
             Jc = jax.vmap(jac_one_component)(u_flat)  # (Cflat, ndims, *S)
@@ -373,7 +363,6 @@ def wrap_in_ndarray(value: Union[jnp.ndarray, List[float]]) -> jnp.ndarray:
     If value is array-like, the shape is conserved.
 
     """
-
     if hasattr(value, "__len__"):
         return jnp.array(value)
     else:

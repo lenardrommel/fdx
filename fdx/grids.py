@@ -1,4 +1,4 @@
-# grids.py
+"""Grid and axis descriptors for finite-difference operators."""
 
 from typing import Dict, Optional, Union
 
@@ -7,7 +7,18 @@ from jax import numpy as jnp
 
 
 class GridAxis:
+    """Axis metadata for a discretized grid."""
+
     def __init__(self, dim: int, periodic: bool = False) -> None:
+        """Create a grid axis descriptor.
+
+        Parameters
+        ----------
+        dim
+            Axis index in the field array.
+        periodic
+            Whether the axis should be treated as periodic.
+        """
         if not isinstance(dim, int):
             raise ValueError("Dimension must be an integer")
         if dim < 0:
@@ -17,7 +28,20 @@ class GridAxis:
 
 
 class EquidistantAxis(GridAxis):
+    """Equidistant grid axis described by a constant spacing."""
+
     def __init__(self, dim: int, spacing: float, periodic: bool = False) -> None:
+        """Create an equidistant axis.
+
+        Parameters
+        ----------
+        dim
+            Axis index in the field array.
+        spacing
+            Constant grid spacing.
+        periodic
+            Whether the axis should be treated as periodic.
+        """
         super().__init__(dim, periodic)
         if spacing <= 0:
             raise ValueError("Spacing must be > 0.")
@@ -25,16 +49,33 @@ class EquidistantAxis(GridAxis):
 
 
 class NonEquidistantAxis(GridAxis):
+    """Non-equidistant grid axis described by explicit coordinates."""
+
     def __init__(self, dim: int, coords: jnp.ndarray, periodic: bool = False) -> None:
+        """Create a non-equidistant axis.
+
+        Parameters
+        ----------
+        dim
+            Axis index in the field array.
+        coords
+            1D coordinate array for this axis.
+        periodic
+            Whether the axis should be treated as periodic.
+        """
         super().__init__(dim, periodic)
         self.coords = coords
 
 
 class Grid:
+    """Container for `GridAxis` objects keyed by axis index."""
+
     def __init__(self, *axes: GridAxis) -> None:
+        """Create a grid from axis descriptors."""
         self.axes: Dict[int, GridAxis] = {ax.dim: ax for ax in axes}
 
     def get_axis(self, dim: int) -> Optional[GridAxis]:
+        """Return the axis descriptor for a given dimension."""
         return self.axes.get(int(dim))
 
 
@@ -80,7 +121,6 @@ def make_axis(
     The purpose of this function is to keep other modules closed with
     respect of addition an modification of GridAxis and Grid types.
     """
-
     if isinstance(config_or_axis, GridAxis):
         return config_or_axis
     if isinstance(config_or_axis, (int, float)):
@@ -105,7 +145,5 @@ def make_axis(
 
 
 def set_accuracy(accuracy: float) -> None:
-    """
-    Placeholder for setting accuracy. Not yet implemented.
-    """
+    """Placeholder for setting accuracy. Not yet implemented."""
     raise NotImplementedError("set_accuracy is not implemented yet.")

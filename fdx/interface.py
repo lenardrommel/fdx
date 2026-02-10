@@ -1,8 +1,12 @@
+"""Public interface wrappers for the finite-difference expression system."""
+
 from fdx.grids import make_axis
 from fdx.operators import Diff as _Diff
 
 
 class Diff(_Diff):
+    """Partial derivative operator with a `findiff`-compatible constructor."""
+
     def __init__(self, axis, grid=None, periodic=False, acc=_Diff.DEFAULT_ACC):
         """Represents a partial derivative (along one axis).
 

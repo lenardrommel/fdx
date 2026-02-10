@@ -1,3 +1,5 @@
+"""Finite-difference stencils and stencil application utilities."""
+
 import math
 from itertools import product
 
@@ -7,7 +9,18 @@ from fdx.utils import to_index_tuple, to_long_index
 
 
 class StencilSet:
+    """Collection of point stencils for different boundary locations."""
+
     def __init__(self, diff_op, shape):
+        """Create a stencil set for a given operator and field shape.
+
+        Parameters
+        ----------
+        diff_op
+            Operator providing a dense `matrix(shape)` representation.
+        shape
+            Shape of the discretized field.
+        """
         self.shape = shape
         self.diff_op = diff_op
         self.char_pts = self._det_characteristic_points()
@@ -23,18 +36,20 @@ class StencilSet:
         return str(self.data)
 
     def apply(self, u, idx0):
-        """Applies the stencil to a point in an equidistant grid.
+        """Apply the appropriate point-stencil at a single index.
 
-        :param u: ndarray
-            An array with the function to differentiate.
+        Parameters
+        ----------
+        u
+            Array containing the field values.
+        idx0
+            Grid index at which to evaluate the derivative.
 
-        :param idx0: int or tuple of ints
-            The index of the grid point where to differentiate the function.
-
-        :return:
-            The derivative at the given point.
+        Returns
+        -------
+        float
+            Derivative value at `idx0`.
         """
-
         if not hasattr(idx0, "__len__"):
             idx0 = (idx0,)
 
@@ -58,15 +73,18 @@ class StencilSet:
         return du
 
     def apply_all(self, u):
-        """Applies the stencil to all grid points.
+        """Apply the stencil to all grid points.
 
-        :param u: ndarray
-            An array with the function to differentiate.
+        Parameters
+        ----------
+        u
+            Array containing the field values.
 
-        :return:
-            An array with the derivative.
+        Returns
+        -------
+        jax.Array
+            Array of derivatives with the same shape as `u`.
         """
-
         assert self.shape == u.shape
 
         ndims = len(u.shape)
@@ -123,7 +141,21 @@ class StencilSet:
 
 
 class Stencil:
+    """Finite-difference stencil defined by offsets and derivative terms."""
+
     def __init__(self, offsets, partials, spacings=None):
+        """Create a stencil.
+
+        Parameters
+        ----------
+        offsets
+            Offset locations used in the stencil. For 1D, a sequence of ints.
+            For higher dimensions, a sequence of index-tuples.
+        partials
+            Mapping from multi-index derivative powers to weights.
+        spacings
+            Grid spacings per axis. If a scalar is given, it is broadcast.
+        """
         self.partials = partials
         self.max_order = 100
         if not hasattr(offsets[0], "__len__"):
@@ -143,6 +175,24 @@ class Stencil:
         self.sol, self.sol_as_dict = self._make_stencil()
 
     def __call__(self, f, at=None, on=None):
+        """Apply the stencil on a field.
+
+        Exactly one of `at` and `on` must be provided.
+
+        Parameters
+        ----------
+        f
+            Array containing the field values.
+        at
+            Single index at which to evaluate the stencil.
+        on
+            Mask or multi-slice defining where to apply the stencil.
+
+        Returns
+        -------
+        jax.Array | float
+            Stencil evaluation on the specified location(s).
+        """
         if at is not None and on is None:
             return self._apply_at_single_point(f, at)
         if at is None and on is not None:
@@ -159,6 +209,20 @@ class Stencil:
         return str(self.values)
 
     def apply_on_mask(self, f, mask):
+        """Apply the stencil to entries selected by a boolean mask.
+
+        Parameters
+        ----------
+        f
+            Array containing the field values.
+        mask
+            Boolean mask with the same shape as `f`.
+
+        Returns
+        -------
+        jax.Array
+            Array with accumulated stencil evaluations at masked positions.
+        """
         result = jnp.zeros_like(f)
         for offset, coeff in self.values.items():
             offset_mask = self._make_offset_mask(mask, offset)
@@ -166,6 +230,20 @@ class Stencil:
         return result
 
     def apply_on_multi_slice(self, f, on):
+        """Apply the stencil on a rectangular region defined by slices.
+
+        Parameters
+        ----------
+        f
+            Array containing the field values.
+        on
+            Sequence of `slice` objects, one per axis.
+
+        Returns
+        -------
+        jax.Array
+            Array with stencil values accumulated on the sliced region.
+        """
         result = jnp.zeros_like(f)
         base_mslice = [
             self._canonic_slice(sl, f.shape[axis]) for axis, sl in enumerate(on)
@@ -225,10 +303,12 @@ class Stencil:
 
     @property
     def values(self):
+        """Dictionary mapping offset tuples to stencil coefficients."""
         return self.sol_as_dict
 
     @property
     def accuracy(self):
+        """Estimated accuracy order of the stencil."""
         return self._calc_accuracy()
 
     def _calc_accuracy(self):

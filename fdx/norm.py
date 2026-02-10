@@ -1,7 +1,8 @@
-import jax
+"""Norm operators for comparing scalar fields."""
+
 from jax import numpy as jnp
 
-from .vector import Gradient, Laplacian
+from .vector import Gradient
 
 
 class Norm:
@@ -25,11 +26,14 @@ class Norm:
 
 
 class L2Norm(Norm):
+    """L2 norm (Euclidean norm) of the difference between two fields."""
+
     def __init__(self, **kwargs):
         # Identity op is not required for L2 computation; keep for API parity
         super().__init__(op=None, **kwargs)  # op unused
 
     def __call__(self, x, y, *args, **kwargs):
+        """Compute the L2 norm of `y - x` along the last axis."""
         return jnp.sqrt(jnp.sum(jnp.square(y - x), axis=-1))
 
 
@@ -41,6 +45,7 @@ class H1Norm(Norm):
         super().__init__(grad, **kwargs)
 
     def __call__(self, x, y, *args, **kwargs):
+        """Compute the H1 norm combining L2 and gradient terms."""
         return jnp.sqrt(
             jnp.sum(jnp.square(y - x), axis=-1)
             + jnp.sum(

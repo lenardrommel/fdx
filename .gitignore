@@ -18,8 +18,22 @@
 !setup.cfg
 !setup.py
 
+# Re-allow Python source inside allowlisted dirs
+!fdx/**/*.py
+!fdx/**/*.pyi
+!tests/**/*.py
+!examples/**/*.py
+!docs/**/*.py
+!docs/**/*.md
+!docs/**/*.yml
+!docs/**/*.yaml
+!fdx/**
+!tests/**
+!examples/**
+!docs/**
+
+
 *.egg-info
-.vscode/*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 */__pycache__/

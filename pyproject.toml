@@ -111,14 +111,50 @@ commands = [
 ]
 
 [tool.ruff]
-line-length = 88
-lint.extend-select = [
-    "B", # flake8-bugbear
-    "I", # isort
-    "UP", # pyupgrade
-]
+line-length = 120
+target-version = "py38"
+src = ["fdx", "tests"]
 extend-exclude = [
-    "docs/source/**/*.ipynb",
+  "docs/source/**/*.ipynb",
+]
+respect-gitignore = false
+
+[tool.ruff.lint]
+# Keep your current set and add docstrings + a few high-signal rules.
+extend-select = [
+  "B",   # bugbear
+  "I",   # import sorting
+  "UP",  # pyupgrade
+
+  "D",   # pydocstyle (docstrings)
+  "F",   # pyflakes
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+]
+
+# Reasonable defaults: enforce docs, but don't be pedantic.
+ignore = [
+  # "D107", # missing docstring in __init__
+  "D105", # missing docstring in magic methods
+  "D401" # Imperative mode
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+known-first-party = ["fdx"]
+
+[tool.ruff.lint.per-file-ignores]
+# Keep tests ergonomic.
+"tests/**/*.py" = ["D"]
+# If you have examples/ or notebooks exported to .py
+"examples/**/*.py" = ["D"]
+
+
+[dependency-groups]
+dev = [
+    "pre-commit>=3.5.0",
 ]
 
 

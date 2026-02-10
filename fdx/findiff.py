@@ -1,12 +1,10 @@
-# findiff.py
+"""Finite-difference differentiators for uniform and non-uniform grids."""
 
 import jax
 from jax import lax
 from jax import numpy as jnp
-from jax.scipy import sparse
 
 from fdx.coefs import coefficients, coefficients_non_uni
-from fdx.config import get_precision
 from fdx.grids import EquidistantAxis, GridAxis, NonEquidistantAxis
 from fdx.utils import (
     get_long_indices_for_all_grid_points_as_1d_array,
@@ -18,6 +16,22 @@ jax.config.update("jax_enable_x64", True)
 
 
 def build_differentiator(order: int, axis: GridAxis, acc):
+    """Construct a finite-difference differentiator for a given axis.
+
+    Parameters
+    ----------
+    order
+        Derivative order.
+    axis
+        Grid axis descriptor.
+    acc
+        Accuracy order.
+
+    Returns
+    -------
+    _FinDiffBase
+        Differentiator instance appropriate for `axis`.
+    """
     if isinstance(axis, EquidistantAxis):
         if not axis.periodic:
             return _FinDiffUniform(axis.dim, order, axis.spacing, acc)

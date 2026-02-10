@@ -1,8 +1,25 @@
+"""Compatibility layer for the `findiff`-style public API."""
+
 from fdx.interface import Diff
 from fdx.operators import FieldOperator, Identity
 
 
 def FinDiff(*args, **kwargs):
+    """Construct a finite-difference expression compatible with `findiff.FinDiff`.
+
+    Parameters
+    ----------
+    *args
+        Either a single tuple `(axis, spacing_or_coords, order)`/`(axis, spacing_or_coords)`,
+        or multiple such tuples to create mixed derivatives via multiplication.
+    **kwargs
+        Passed through to `fdx.interface.Diff`.
+
+    Returns
+    -------
+    Expression
+        An operator expression that can be applied to arrays.
+    """
     if len(args) > 3:
         raise ValueError("FinDiff accepts not more than 3 positional arguments.")
 
