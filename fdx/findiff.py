@@ -1,5 +1,6 @@
 """Finite-difference differentiators for uniform and non-uniform grids."""
 
+import math
 import equinox as eqx
 import jax
 from jax import lax
@@ -122,7 +123,7 @@ class _FinDiffBase(eqx.Module):
 
     def matrix(self, shape):
         """Return a dense matrix representation for a given field shape."""
-        siz = int(jnp.prod(jnp.array(shape)))
+        siz = math.prod(shape)
         mat = jnp.zeros((siz, siz))
         mat = self.write_matrix_entries(mat, shape)
         return mat
@@ -213,7 +214,7 @@ class _FinDiffUniform(_FinDiffBase):
 
         # Flatten all dims except the last into a batch dim: (B, n_axis)
         spatial_n = orig_shape[-1]
-        batch_size = int(jnp.prod(jnp.array(orig_shape[:-1]))) if ndims > 1 else 1
+        batch_size = math.prod(orig_shape[:-1])
         f_flat = f_t.reshape(batch_size, spatial_n)
 
         # lax.conv_general_dilated expects (batch, channels, spatial...)
@@ -335,7 +336,7 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         f_t = jnp.transpose(f, perm)
         orig_shape = f_t.shape
         spatial_n = orig_shape[-1]
-        batch_size = int(jnp.prod(jnp.array(orig_shape[:-1]))) if ndims > 1 else 1
+        batch_size = math.prod(orig_shape[:-1])
         f_flat = f_t.reshape(batch_size, spatial_n)
 
         # Circular pad along spatial axis

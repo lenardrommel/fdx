@@ -4,139 +4,126 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fdx"
-version = "0.1.1"
-authors = [
-    { name = "Lenard Rommel" },
-]
+dynamic = ["version"]
+authors = [{ name = "Lenard Rommel" }]
 
 description = "A Python package for finite difference derivatives in JAX."
 readme = "README.md"
 
+# JAX + jaxlib require Python >= 3.11 (current releases) :contentReference[oaicite:1]{index=1}
+requires-python = ">=3.11"
+
 dependencies = [
     "jax",
-    "pytest",
     "numpy",
+    "equinox",
+    "pytest",
     "scipy",
     "sympy",
 ]
 
-requires-python = ">=3.8"
 keywords = ["finite-differences", "numerical-derivatives", "scientific-computing"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Mathematics",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 
-
-[tool.setuptools.packages.find]
-include = ["fdx"]
-
-
-[tool.setuptools.dynamic]
-version = { attr = "fdx.__version__" }
-
-[tool.pytest.ini_options]
-addopts = [
-    "--strict-markers"
+[project.optional-dependencies]
+# Alles fürs Testen/Validieren (dein Wunsch: hypothesis + findiff)
+test = [
+    "pytest>=7",
+    "hypothesis>=6",
+    "findiff",
 ]
 filterwarnings = [
     "ignore:The 'repr' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
     "ignore:The 'frozen' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
 ]
 
+# Tooling fürs Entwickeln (Format/Lint/CI lokal)
+dev = [
+    "ruff",
+    "tox>=4.21",
+    "pre-commit>=3.5.0",
+]
 
+# Nur wenn man die Example-Skripte/Plots laufen lassen will
+examples = [
+    "matplotlib",
+]
+
+[tool.setuptools.packages.find]
+include = ["fdx*"]
+
+[tool.setuptools_scm]
+# schreibt beim Build eine Datei mit __version__ rein
+write_to = "fdx/_version.py"
+write_to_template = "__version__ = \"{version}\"\n"
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers"]
+testpaths = ["tests"]
 
 [tool.tox]
 requires = ["tox>=4.21"]
-env_list = [
-    "fmt", "lint",
-    "3.13", "3.12", "3.11", "3.10", "3.9", "3.8",
-]
-
+env_list = ["fmt", "lint", "py311", "py312", "py313", "py314", "docs", "doctest"]
 
 [tool.tox.env_run_base]
 wheel_build_env = ".pkg"
-deps = [
-    "pytest",
-    "ipykernel",
-    "nbclient",
-    "matplotlib",
-]
-commands = [
-    ["pytest"],
-]
+extras = ["test"]
+commands = [["pytest"]]
 
 [tool.tox.env.docs]
 deps = [
     "sphinx",
     "-r docs/requirements.txt",
 ]
-commands = [
-    ["sphinx-build", "-M", "html", "docs/source", "docs/build/"],
-]
+commands = [["sphinx-build", "-M", "html", "docs/source", "docs/build/"]]
 
 [tool.tox.env.doctest]
 deps = [
     "sphinx",
     "-r docs/requirements.txt",
 ]
-commands = [
-    ["sphinx-build", "-M", "doctest", "docs/source", "docs/build/"],
-]
+commands = [["sphinx-build", "-M", "doctest", "docs/source", "docs/build/"]]
 
 [tool.tox.env.fmt]
 package = "skip"
-deps = [
-    "ruff",
-]
-commands = [
-    ["ruff", "format", "--check", { replace = "posargs", default = ["."], extend = true }],
-]
+deps = ["ruff"]
+commands = [["ruff", "format", "--check", { replace = "posargs", default = ["."], extend = true }]]
 
 [tool.tox.env.lint]
 package = "skip"
-deps = [
-    "ruff",
-]
-commands = [
-    ["ruff", "check", "--no-fix", { replace = "posargs", default = ["."], extend = true }],
-]
+deps = ["ruff"]
+commands = [["ruff", "check", "--no-fix", { replace = "posargs", default = ["."], extend = true }]]
 
 [tool.ruff]
 line-length = 120
-target-version = "py38"
+target-version = "py311"
 src = ["fdx", "tests"]
-extend-exclude = [
-  "docs/source/**/*.ipynb",
-]
-respect-gitignore = false
+extend-exclude = ["docs/source/**/*.ipynb"]
+respect-gitignore = true
 
 [tool.ruff.lint]
-# Keep your current set and add docstrings + a few high-signal rules.
 extend-select = [
   "B",   # bugbear
   "I",   # import sorting
   "UP",  # pyupgrade
-
   "D",   # pydocstyle (docstrings)
   "F",   # pyflakes
   "E",   # pycodestyle errors
   "W",   # pycodestyle warnings
 ]
-
-# Reasonable defaults: enforce docs, but don't be pedantic.
 ignore = [
-  # "D107", # missing docstring in __init__
   "D105", # missing docstring in magic methods
-  "D401" # Imperative mode
+  "D401", # Imperative mood
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -146,15 +133,5 @@ convention = "numpy"
 known-first-party = ["fdx"]
 
 [tool.ruff.lint.per-file-ignores]
-# Keep tests ergonomic.
 "tests/**/*.py" = ["D"]
-# If you have examples/ or notebooks exported to .py
 "examples/**/*.py" = ["D"]
-
-
-[dependency-groups]
-dev = [
-    "pre-commit>=3.5.0",
-]
-
-
