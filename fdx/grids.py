@@ -4,6 +4,7 @@ from typing import Dict, Optional, Union
 
 import jax
 from jax import numpy as jnp
+from fdx.types import Array
 
 
 class GridAxis:
@@ -51,7 +52,7 @@ class EquidistantAxis(GridAxis):
 class NonEquidistantAxis(GridAxis):
     """Non-equidistant grid axis described by explicit coordinates."""
 
-    def __init__(self, dim: int, coords: jnp.ndarray, periodic: bool = False) -> None:
+    def __init__(self, dim: int, coords: Array, periodic: bool = False) -> None:
         """Create a non-equidistant axis.
 
         Parameters
@@ -140,7 +141,7 @@ def make_axis(
             f"Unsupported axis type: {type(config_or_axis)}. "
             "Expected GridAxis, number, or jax.Array."
         )
-    # elif isinstance(config_or_axis, jnp.ndarray):
+    # elif isinstance(config_or_axis, Array):
     #     return NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
 
 

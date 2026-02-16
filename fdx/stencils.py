@@ -83,27 +83,14 @@ class StencilSet:
         Returns
         -------
         jax.Array
-            Array of derivatives with the same shape as `u`.
+            Array of derivatives with the same shape as ``u``.
         """
         assert self.shape == u.shape
-
-        ndims = len(u.shape)
-        indices: list[tuple[int, ...]]
-        if ndims == 1:
-            indices = [(i,) for i in range(u.shape[0])]
-        else:
-            axes_indices = [list(range(u.shape[axis])) for axis in range(ndims)]
-            indices = list(product(*axes_indices))
-
-        du = jnp.zeros_like(u)
-
-        for idx in indices:
-            du = du.at[idx].set(self.apply(u, idx))
-
-        return du
+        return (self._matrix @ u.ravel()).reshape(u.shape)
 
     def _create_stencil(self):
         matrix = self.diff_op.matrix(self.shape)
+        self._matrix = matrix  # cache for apply_all
 
         for pt in self.char_pts:
             char_point_stencil: dict[tuple[int, ...], float] = {}
@@ -322,7 +309,7 @@ class Stencil:
             terms = self._multinomial_powers(order)
             for term in terms:
                 row = self._system_matrix_row(term)
-                resid = jnp.sum(jnp.array(self.sol) * jnp.array(row))
+                resid = sum(float(s) * float(r) for s, r in zip(self.sol, row))
                 if abs(resid) > tol and term not in self.partials:
                     return order - deriv_order
 

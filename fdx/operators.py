@@ -8,12 +8,13 @@ without depending on external linear-operator packages.
 import numbers
 from abc import ABC, abstractmethod
 from typing import List, Optional, Union
-
+import jax
 from jax import numpy as jnp
 
 from fdx.findiff import build_differentiator
 from fdx.grids import GridAxis, make_grid
 from fdx.stencils import StencilSet
+from fdx.types import Array
 
 
 class Expression(ABC):
@@ -97,16 +98,17 @@ class Expression(ABC):
             child.set_accuracy(acc)
 
 
+@jax.tree_util.register_pytree_node_class
 class FieldOperator(Expression):
     """Pointwise multiplication operator."""
 
-    def __init__(self, value: Union[float, jnp.ndarray]) -> None:
+    def __init__(self, value: Union[float, Array]) -> None:
         super().__init__()
         self.value = value
 
     def __call__(self, f, *args, **kwargs):
         """Apply pointwise multiplication to an array or expression."""
-        if isinstance(f, (numbers.Number, jnp.ndarray)):
+        if isinstance(f, (numbers.Number, Array)):
             return self.value * f
         if isinstance(f, Expression):
             return self.value * f(*args, **kwargs)
@@ -115,7 +117,7 @@ class FieldOperator(Expression):
     def matrix(self, shape):
         """Return a dense diagonal matrix for the pointwise multiplier."""
         siz = int(jnp.prod(jnp.array(shape)))
-        if isinstance(self.value, jnp.ndarray):
+        if isinstance(self.value, Array):
             diag_values = self.value.reshape(-1)
         elif isinstance(self.value, (int, float)):
             diag_values = jnp.full((siz,), float(self.value))
@@ -123,7 +125,21 @@ class FieldOperator(Expression):
             raise TypeError("Unsupported field value type for matrix()")
         return jnp.diag(diag_values)
 
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        if isinstance(self.value, Array):
+            return (self.value,), None
+        return (), (self.value,)
 
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        if children:
+            return cls(children[0])
+        return cls(aux_data[0])
+
+
+@jax.tree_util.register_pytree_node_class
 class ScalarOperator(FieldOperator):
     """Scalar multiplication operator."""
 
@@ -144,13 +160,32 @@ class ScalarOperator(FieldOperator):
         siz = int(jnp.prod(jnp.array(shape)))
         return jnp.eye(siz) * float(self.value)
 
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        return (), (self.value,)
 
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        return cls(aux_data[0])
+
+
+@jax.tree_util.register_pytree_node_class
 class Identity(ScalarOperator):
     """Identity operator."""
 
     def __init__(self):
         """Create an identity operator."""
         super().__init__(1.0)
+
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        return (), ()
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        return cls()
 
 
 class BinaryOperation(Expression):
@@ -167,14 +202,15 @@ class BinaryOperation(Expression):
         return self.children[1]
 
 
+@jax.tree_util.register_pytree_node_class
 class Add(BinaryOperation):
     """Sum of two expressions."""
 
     def __init__(self, left, right):
         """Create an addition node."""
-        if isinstance(left, (numbers.Number, jnp.ndarray)):
+        if isinstance(left, (numbers.Number, Array)):
             left = FieldOperator(left)
-        if isinstance(right, (numbers.Number, jnp.ndarray)):
+        if isinstance(right, (numbers.Number, Array)):
             right = FieldOperator(right)
         super().__init__()
         self.children = [left, right]
@@ -187,15 +223,25 @@ class Add(BinaryOperation):
         """Return the dense matrix representation of the sum."""
         return self.left.matrix(shape) + self.right.matrix(shape)
 
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        return (self.left, self.right), None
 
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        return cls(children[0], children[1])
+
+
+@jax.tree_util.register_pytree_node_class
 class Mul(BinaryOperation):
     """Composition of two expressions."""
 
     def __init__(self, left, right):
         """Create a composition node."""
-        if isinstance(left, (numbers.Number, jnp.ndarray)):
+        if isinstance(left, (numbers.Number, Array)):
             left = FieldOperator(left)
-        if isinstance(right, (numbers.Number, jnp.ndarray)):
+        if isinstance(right, (numbers.Number, Array)):
             right = FieldOperator(right)
         super().__init__()
         self.children = [left, right]
@@ -208,7 +254,17 @@ class Mul(BinaryOperation):
         """Return the dense matrix representation of the composition."""
         return self.left.matrix(shape) @ self.right.matrix(shape)
 
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        return (self.left, self.right), None
 
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        return cls(children[0], children[1])
+
+
+@jax.tree_util.register_pytree_node_class
 class Diff(Expression):
     """Partial derivative operator along a single grid axis."""
 
@@ -292,3 +348,23 @@ class Diff(Expression):
             new_diff._order += other.order
             return new_diff
         return super().__mul__(other)
+
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        # The differentiator may contain JAX arrays; include it as a child if it exists
+        children = (self._differentiator,) if self._differentiator is not None else ()
+        aux_data = (self.dim, self._order, self.acc, self._axis)
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        dim, order, acc, axis = aux_data
+        obj = object.__new__(cls)
+        Expression.__init__(obj)
+        obj.dim = dim
+        obj.acc = acc
+        obj._order = order
+        obj._axis = axis
+        obj._differentiator = children[0] if children else None
+        return obj

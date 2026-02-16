@@ -1,9 +1,11 @@
 """Public interface wrappers for the finite-difference expression system."""
 
+import jax
 from fdx.grids import make_axis
-from fdx.operators import Diff as _Diff
+from fdx.operators import Diff as _Diff, Expression
 
 
+@jax.tree_util.register_pytree_node_class
 class Diff(_Diff):
     """Partial derivative operator with a `findiff`-compatible constructor."""
 
@@ -48,3 +50,23 @@ class Diff(_Diff):
         """
         grid_axis = make_axis(axis, grid, periodic)
         super().__init__(axis, grid_axis, acc)
+
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        children = (self._differentiator,) if self._differentiator is not None else ()
+        aux_data = (self.dim, self._order, self.acc, self._axis)
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        dim, order, acc, axis = aux_data
+        obj = object.__new__(cls)
+        Expression.__init__(obj)
+        obj.dim = dim
+        obj.acc = acc
+        obj._order = order
+        obj._axis = axis
+        obj._differentiator = children[0] if children else None
+        return obj
+

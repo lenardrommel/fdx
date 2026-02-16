@@ -235,7 +235,7 @@ class TestFinDiffTrigonometric:
         y = jnp.linspace(0, 2 * jnp.pi, 50)
         X, Y = jnp.meshgrid(x, y, indexing="ij")
         dx = x[1] - x[0]
-        dy = y[1] - y[0]
+        y[1] - y[0]
 
         f = jnp.sin(X) * jnp.cos(Y)
 

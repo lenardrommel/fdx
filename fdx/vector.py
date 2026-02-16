@@ -6,7 +6,7 @@ import jax
 from jax import numpy as jnp
 
 from .compatible import FinDiff
-
+from fdx.types import Array
 
 class VectorOperator:
     """Base class for all vector differential operators.
@@ -47,7 +47,7 @@ class VectorOperator:
             self.ndims = self.__get_dimension(coords)
             self.components = [FinDiff((k, coords[k], 1), **kwargs) for k in range(self.ndims)]
 
-    def __get_dimension(self, coords: List[jnp.ndarray]) -> int:
+    def __get_dimension(self, coords: List[Array]) -> int:
         return len(coords)
 
 
@@ -74,7 +74,7 @@ class Gradient(VectorOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, f: jnp.ndarray, axis: Optional[int] = None, has_batch: bool = False) -> jnp.ndarray:
+    def __call__(self, f: Array, axis: Optional[int] = None, has_batch: bool = False) -> Array:
         """
         Applies the N-dimensional gradient to the array f.
 
@@ -94,8 +94,8 @@ class Gradient(VectorOperator):
                 an array of N arrays of N axes each.
 
         """
-        if not isinstance(f, jnp.ndarray):
-            raise TypeError("Function to differentiate must be jnp.ndarray")
+        if not isinstance(f, Array):
+            raise TypeError("Function to differentiate must be Array")
 
         if has_batch:
             # scalar field per batch item must have exactly ndims axes
@@ -153,7 +153,7 @@ class Divergence(VectorOperator):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, f: Array) -> Array:
         """
         Applies the divergence to the array f.
 
@@ -166,8 +166,8 @@ class Divergence(VectorOperator):
                the divergence, which is a scalar function of N variables, so it's array dimension has N axes
 
         """
-        if not isinstance(f, jnp.ndarray) and not isinstance(f, list):
-            raise TypeError("Function to differentiate must be jnp.ndarray or list of jnp.ndarrays")
+        if not isinstance(f, Array) and not isinstance(f, list):
+            raise TypeError("Function to differentiate must be Array or list of Arrays")
 
         if len(f.shape) != self.ndims + 1 and f.shape[0] != self.ndims:
             raise ValueError("Divergence can only be applied to vector functions of the same dimension")
@@ -212,7 +212,7 @@ class Curl(VectorOperator):
         if self.ndims != 3:
             raise ValueError(f"Curl operation is only defined in 3 dimensions. {self.ndims} were given.")
 
-    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, f: Array) -> Array:
         """
         Applies the curl to the array f.
 
@@ -225,8 +225,8 @@ class Curl(VectorOperator):
                the curl, which is a vector function of N variables, so it's array dimension has N+1 axes
 
         """
-        if not isinstance(f, jnp.ndarray) and not isinstance(f, list):
-            raise TypeError("Function to differentiate must be jnp.ndarray or list of jnp.ndarrays")
+        if not isinstance(f, Array) and not isinstance(f, list):
+            raise TypeError("Function to differentiate must be Array or list of Arrays")
 
         if len(f.shape) != self.ndims + 1 and f.shape[0] != self.ndims:
             raise ValueError("Curl can only be applied to vector functions of the three dimensions")
@@ -259,7 +259,7 @@ class Laplacian(VectorOperator):
         self._parts = [FinDiff((k, h_arr[k], 2), acc=acc) for k in range(len(h_arr))]
         super().__init__(h=h_arr, acc=acc)
 
-    def __call__(self, f: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, f: Array) -> Array:
         """
         Applies the Laplacian to the array f.
 
@@ -291,7 +291,7 @@ class Jacobian(VectorOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, u: jnp.ndarray, has_batch: bool = False) -> jnp.ndarray:
+    def __call__(self, u: Array, has_batch: bool = False) -> Array:
         """Compute the Jacobian of a vector-valued field.
 
         Parameters
@@ -308,8 +308,8 @@ class Jacobian(VectorOperator):
             Jacobian array with shape `(ndims, *spatial, *components)` or
             `(batch, ndims, *spatial, *components)` when `has_batch=True`.
         """
-        if not isinstance(u, jnp.ndarray):
-            raise TypeError("Function to differentiate must be jnp.ndarray")
+        if not isinstance(u, Array):
+            raise TypeError("Function to differentiate must be Array")
 
         if has_batch:
             if u.ndim < self.ndims + 1:
@@ -356,7 +356,7 @@ class Jacobian(VectorOperator):
             return J.reshape(self.ndims, *spatial_shape, *comp_shape)
 
 
-def wrap_in_ndarray(value: Union[jnp.ndarray, List[float]]) -> jnp.ndarray:
+def wrap_in_ndarray(value: Union[Array, List[float]]) -> Array:
     """Wraps the argument in a numpy.ndarray.
 
     If value is a scalar, it is converted in a list first.

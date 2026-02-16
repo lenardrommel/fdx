@@ -4,6 +4,7 @@ import itertools
 from typing import List, Sequence, Tuple
 
 import jax.numpy as jnp
+from fdx.types import Array
 
 
 def to_long_index(idx: Sequence[int], shape: Sequence[int]) -> int:
@@ -57,7 +58,7 @@ def to_index_tuple(long_idx: int, shape: Sequence[int]) -> Tuple[int, ...]:
 
 def get_long_indices_for_all_grid_points_as_ndarray(
     shape: Sequence[int],
-) -> jnp.ndarray:
+) -> Array:
     """Return flattened indices for all grid points as an N-D array.
 
     Parameters
@@ -75,7 +76,7 @@ def get_long_indices_for_all_grid_points_as_ndarray(
 
 def get_long_indices_for_all_grid_points_as_1d_array(
     shape: Sequence[int],
-) -> jnp.ndarray:
+) -> Array:
     """Return flattened indices for all grid points as a 1D array.
 
     Parameters

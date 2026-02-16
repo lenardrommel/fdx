@@ -1,8 +1,8 @@
 import pytest
-from findiff import FinDiff
 from jax import numpy as jnp
 
 import fdx
+from findiff import FinDiff
 
 
 def assert_dict_almost_equal(first, second):
@@ -25,7 +25,7 @@ def test_findiff_should_raise_exception_when_applied_to_unevaluated_function():
 
 
 def test_matrix_representation_doesnt_work_for_order_greater_2_issue_24():
-    x = jnp.zeros((10))
+    x = jnp.zeros(10)
     d3_dx3 = FinDiff((0, 1, 3))
     mat = d3_dx3.matrix(x.shape)
 
@@ -44,7 +44,7 @@ def test_matrix_repr_with_different_accs():
     d1 = fdx.FinDiff(0, 1, 2).matrix(shape)
     d2 = fdx.FinDiff(0, 1, 2, acc=4).matrix(shape)
 
-    assert jnp.max(jnp.abs((d1 - d2))) > 1
+    assert jnp.max(jnp.abs(d1 - d2)) > 1
 
     x = jnp.linspace(0, 10, 11)
     f = x**2

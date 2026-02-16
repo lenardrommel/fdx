@@ -1,6 +1,6 @@
 """fdx: finite-difference operators for JAX arrays."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 
 from fdx.coefs import coefficients
 from fdx.compatible import Coef, Coefficient, FinDiff, Id

@@ -4,7 +4,7 @@ import jax
 from jax import lax
 from jax import numpy as jnp
 
-from fdx.coefs import coefficients, coefficients_non_uni
+from fdx.coefs import coefficients, coefficients_non_uni, precompute_all_non_uni_coefficients
 from fdx.grids import EquidistantAxis, GridAxis, NonEquidistantAxis
 from fdx.utils import (
     get_long_indices_for_all_grid_points_as_1d_array,
@@ -13,6 +13,26 @@ from fdx.utils import (
 )
 
 jax.config.update("jax_enable_x64", True)
+
+
+@jax.custom_jvp
+def apply_fd(diff, f):
+    """Apply a finite-difference differentiator to an array.
+
+    This function is decorated with ``custom_jvp`` so that JAX's
+    automatic differentiation correctly recognises that ``D`` is linear:
+    ``jvp(D, (f,), (f_dot,)) = (D(f), D(f_dot))``.
+    """
+    return diff._apply_impl(f)
+
+
+@apply_fd.defjvp
+def _apply_fd_jvp(primals, tangents):
+    diff, f = primals
+    _, f_dot = tangents
+    primal_out = apply_fd(diff, f)
+    tangent_out = apply_fd(diff, f_dot)
+    return primal_out, tangent_out
 
 
 def build_differentiator(order: int, axis: GridAxis, acc):
@@ -107,7 +127,7 @@ class _FinDiffBase:
         return slice(sl.start + off, sl.stop + off, sl.step)
 
     def matrix(self, shape):
-        siz = jnp.prod(*shape)
+        siz = int(jnp.prod(jnp.array(shape)))
         mat = jnp.zeros((siz, siz))
         mat = self.write_matrix_entries(mat, shape)
         return mat
@@ -116,6 +136,7 @@ class _FinDiffBase:
         raise NotImplementedError
 
 
+@jax.tree_util.register_pytree_node_class
 class _FinDiffUniform(_FinDiffBase):
     def __init__(self, axis, order, spacing, acc):
         super().__init__(axis, order)
@@ -129,14 +150,18 @@ class _FinDiffUniform(_FinDiffBase):
 
     def __call__(self, f):
         f = self.guard_valid_target(f)
+        return apply_fd(self, f)
+
+    def _apply_impl(self, f):
         npts = int(f.shape[self.axis])
         fd = jnp.zeros_like(f)
         num_bndry_points = len(self.center["coefficients"]) // 2
 
-        fd = self._apply_central_coefs(f, fd, npts, num_bndry_points)
+        # Central region: use JAX convolution (single fused XLA op)
+        fd = self._apply_central_conv(f, fd, npts, num_bndry_points)
 
+        # Boundary regions: keep apply_to_array (only a few points)
         fd = self._apply_forward_coefs(f, fd, npts, num_bndry_points)
-
         fd = self._apply_backward_coefs(f, fd, npts, num_bndry_points)
 
         h_inv = 1.0 / self.spacing**self.order
@@ -164,33 +189,86 @@ class _FinDiffUniform(_FinDiffBase):
             fd, f, weights, offsets, ref_start, ref_size, self.axis
         )
 
-    def _apply_central_coefs(self, f, fd, npts, num_bndry_points):
-        weights = self.center["coefficients"]
-        offsets = self.center["offsets"]
+    def _apply_central_conv(self, f, fd, npts, num_bndry_points):
+        """Apply central FD stencil via JAX 1D convolution (single XLA op)."""
+        weights = jnp.array(self.center["coefficients"], dtype=f.dtype)
+        k = len(weights)
+        dim = self.axis
+        ndims = f.ndim
 
+        # Reshape f so the target axis is the last spatial dim for conv:
+        # Move target axis to position -1, then add batch+channel dims for lax.conv
+        perm = [i for i in range(ndims) if i != dim] + [dim]
+        inv_perm = [0] * ndims
+        for new_pos, old_pos in enumerate(perm):
+            inv_perm[old_pos] = new_pos
+
+        f_t = jnp.transpose(f, perm)  # (..., n_axis)
+        orig_shape = f_t.shape
+
+        # Flatten all dims except the last into a batch dim: (B, n_axis)
+        spatial_n = orig_shape[-1]
+        batch_size = int(jnp.prod(jnp.array(orig_shape[:-1]))) if ndims > 1 else 1
+        f_flat = f_t.reshape(batch_size, spatial_n)
+
+        # lax.conv_general_dilated expects (batch, channels, spatial...)
+        # Use depthwise-like 1D conv: treat batch as channels, convolve each independently
+        # Shape: (batch, 1, spatial) with kernel (1, 1, k)
+        f_conv_in = f_flat[:, None, :]  # (B, 1, N)
+
+        # lax.conv_general_dilated does cross-correlation, so use coefficients directly
+        kernel = weights.reshape(1, 1, k)  # (out_ch, in_ch, k)
+
+        # Valid convolution (no padding) gives output size = N - k + 1
+        conv_out = lax.conv_general_dilated(
+            f_conv_in.astype(weights.dtype),
+            kernel,
+            window_strides=(1,),
+            padding="VALID",
+            dimension_numbers=("NCH", "OIH", "NCH"),
+        )  # (B, 1, N - k + 1)
+
+        conv_result = conv_out[:, 0, :]  # (B, N - k + 1)
+
+        # Write conv result into the central region of fd
         ref_start = num_bndry_points
         ref_size = npts - 2 * num_bndry_points
 
-        return self.apply_to_array(
-            fd, f, weights, offsets, ref_start, ref_size, self.axis
+        fd_t = jnp.transpose(fd, perm)
+        fd_flat = fd_t.reshape(batch_size, spatial_n)
+        fd_flat = fd_flat.at[:, ref_start : ref_start + ref_size].set(
+            conv_result.astype(fd.dtype)
         )
+
+        fd_t = fd_flat.reshape(orig_shape)
+        fd = jnp.transpose(fd_t, inv_perm)
+        return fd
 
     def write_matrix_entries(self, mat, shape):
         long_indices_nd = get_long_indices_for_all_grid_points_as_ndarray(shape)
+        h_inv = 1.0 / self.spacing**self.order
+
+        all_rows = []
+        all_cols = []
+        all_vals = []
+
         for scheme in ["center", "forward", "backward"]:
             offsets_long = self._convert_1D_offsets_to_long_indices(
                 self.axis, getattr(self, scheme)["offsets"], shape
             )
-
             multi_slice = self._get_multislice_for_scheme(self.axis, scheme, shape)
             Is = long_indices_nd[tuple(multi_slice)].reshape(-1)
-
             coefs = getattr(self, scheme)["coefficients"]
-            for o, c in zip(offsets_long, coefs):
-                v = c / self.spacing**self.order
-                mat = mat.at[Is, Is + o].set(v)
 
-        return mat
+            for o, c in zip(offsets_long, coefs):
+                all_rows.append(Is)
+                all_cols.append(Is + o)
+                all_vals.append(jnp.full_like(Is, c * h_inv, dtype=mat.dtype))
+
+        rows = jnp.concatenate(all_rows)
+        cols = jnp.concatenate(all_cols)
+        vals = jnp.concatenate(all_vals)
+        return mat.at[rows, cols].add(vals)
 
     def _get_multislice_for_scheme(self, axis, scheme, shape):
         ndims = len(shape)
@@ -214,7 +292,35 @@ class _FinDiffUniform(_FinDiffBase):
             offsets_long.append(o_long)
         return offsets_long
 
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        # Coefficients are JAX arrays → children
+        children = (
+            self.forward["coefficients"],
+            self.forward["offsets"],
+            self.backward["coefficients"],
+            self.backward["offsets"],
+            self.center["coefficients"],
+            self.center["offsets"],
+        )
+        aux_data = (self.axis, self.order, self.spacing, self.acc)
+        return children, aux_data
 
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        axis, order, spacing, acc = aux_data
+        obj = object.__new__(cls)
+        _FinDiffBase.__init__(obj, axis, order)
+        obj.spacing = spacing
+        obj.acc = acc
+        obj.forward = {"coefficients": children[0], "offsets": children[1]}
+        obj.backward = {"coefficients": children[2], "offsets": children[3]}
+        obj.center = {"coefficients": children[4], "offsets": children[5]}
+        return obj
+
+
+@jax.tree_util.register_pytree_node_class
 class _FinDiffUniformPeriodic(_FinDiffBase):
     def __init__(self, axis, order, spacing, acc):
         super().__init__(axis, order)
@@ -224,20 +330,69 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
 
     def __call__(self, f):
         f = self.guard_valid_target(f)
+        return apply_fd(self, f)
 
-        fd = jnp.zeros_like(f)
-        for off, coef in zip(self.coefs["offsets"], self.coefs["coefficients"]):
-            fd = fd + coef * jnp.roll(f, -off, axis=self.axis)
+    def _apply_impl(self, f):
+        weights = jnp.array(self.coefs["coefficients"], dtype=f.dtype)
+        k = len(weights)
+        half = k // 2
+        dim = self.axis
+        ndims = f.ndim
+
+        # Move target axis to last, flatten rest into batch
+        perm = [i for i in range(ndims) if i != dim] + [dim]
+        inv_perm = [0] * ndims
+        for new_pos, old_pos in enumerate(perm):
+            inv_perm[old_pos] = new_pos
+
+        f_t = jnp.transpose(f, perm)
+        orig_shape = f_t.shape
+        spatial_n = orig_shape[-1]
+        batch_size = int(jnp.prod(jnp.array(orig_shape[:-1]))) if ndims > 1 else 1
+        f_flat = f_t.reshape(batch_size, spatial_n)
+
+        # Circular pad along spatial axis
+        f_padded = jnp.concatenate(
+            [f_flat[:, -half:], f_flat, f_flat[:, :half]], axis=-1
+        )
+
+        # lax.conv_general_dilated does cross-correlation, use coefficients directly
+        f_conv_in = f_padded[:, None, :]  # (B, 1, N + 2*half)
+        kernel = weights.reshape(1, 1, k)
+
+        conv_out = lax.conv_general_dilated(
+            f_conv_in.astype(weights.dtype),
+            kernel,
+            window_strides=(1,),
+            padding="VALID",
+            dimension_numbers=("NCH", "OIH", "NCH"),
+        )  # (B, 1, N)
+
+        fd_flat = conv_out[:, 0, :]  # (B, N)
+        fd_t = fd_flat.reshape(orig_shape)
+        fd = jnp.transpose(fd_t, inv_perm)
+
         h_inv = 1.0 / self.spacing**self.order
-        return fd * h_inv
+        return (fd * h_inv).astype(f.dtype)
 
     def write_matrix_entries(self, mat, shape):
         Is = get_long_indices_for_all_grid_points_as_1d_array(shape)
         h_inv = 1 / self.spacing**self.order
+
+        all_rows = []
+        all_cols = []
+        all_vals = []
+
         for o, c in zip(self.coefs["offsets"], self.coefs["coefficients"]):
             Is_off = self._get_offset_indices_long(o, shape)
-            mat = mat.at[Is, Is_off].set(c * h_inv)
-        return mat
+            all_rows.append(Is)
+            all_cols.append(Is_off)
+            all_vals.append(jnp.full_like(Is, c * h_inv, dtype=mat.dtype))
+
+        rows = jnp.concatenate(all_rows)
+        cols = jnp.concatenate(all_cols)
+        vals = jnp.concatenate(all_vals)
+        return mat.at[rows, cols].add(vals)
 
     def _get_offset_indices_long(self, o, shape):
         ndims = len(shape)
@@ -248,36 +403,64 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         Is_off = jnp.ravel_multi_index(index_tuples.T, shape)
         return Is_off
 
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        children = (self.coefs["coefficients"], self.coefs["offsets"])
+        aux_data = (self.axis, self.order, self.spacing, self.acc)
+        return children, aux_data
 
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        axis, order, spacing, acc = aux_data
+        obj = object.__new__(cls)
+        _FinDiffBase.__init__(obj, axis, order)
+        obj.spacing = spacing
+        obj.acc = acc
+        obj.coefs = {"coefficients": children[0], "offsets": children[1]}
+        return obj
+
+
+@jax.tree_util.register_pytree_node_class
 class _FinDiffNonUniform(_FinDiffBase):
     def __init__(self, axis, order, coords, acc):
         super().__init__(axis, order)
         self.coords = coords
         self.acc = acc
 
-    def __call__(self, y):
-        """Apply a finite-difference derivative on a non-uniform, non-periodic axis.
+        # Precompute all per-point coefficients as padded arrays (runs once, not traced)
+        precomputed = precompute_all_non_uni_coefficients(order, acc, coords)
+        self._all_coefficients = precomputed["all_coefficients"]  # (n, max_width)
+        self._all_offsets = precomputed["all_offsets"]  # (n, max_width)
 
-        Uses location-dependent coefficients computed from the actual coordinate
-        values (no uniform spacing assumption). Boundary points automatically
-        use appropriate one-sided stencils.
-        """
+    def __call__(self, y):
+        """Apply a finite-difference derivative on a non-uniform, non-periodic axis."""
         y = self.guard_valid_target(y)
+        return apply_fd(self, y)
+
+    def _apply_impl(self, y):
+        """Core implementation using precomputed coefficients.
+
+        The loop body is pure array operations with fixed shapes,
+        making it fully traceable under ``jax.jit``.
+        """
 
         # Move target axis to front for simpler indexing: (n, ...)
         y_m = jnp.moveaxis(y, self.axis, 0)
         n = y_m.shape[0]
         yd_m = jnp.zeros_like(y_m)
 
-        def body(i, acc_arr):
-            coef = coefficients_non_uni(self.order, self.acc, self.coords, i)
-            ws = coef["coefficients"]  # (k,)
-            offs = coef["offsets"].astype(jnp.int32)  # (k,)
+        all_ws = self._all_coefficients  # (n, max_width)
+        all_offs = self._all_offsets  # (n, max_width)
 
-            idxs = i + offs  # (k,)
+        def body(i, acc_arr):
+            ws = all_ws[i]  # (max_width,)
+            offs = all_offs[i]  # (max_width,)
+
+            idxs = i + offs  # (max_width,)
             # Gather the stencil along the moved axis (0)
-            stencil_vals = jnp.take(y_m, idxs, axis=0)
-            # Weighted sum across stencil dimension
+            stencil_vals = jnp.take(y_m, idxs, axis=0)  # (max_width, ...)
+            # Weighted sum across stencil dimension (zero-padded entries contribute 0)
             val = jnp.tensordot(ws, stencil_vals, axes=(0, 0))
             acc_arr = acc_arr.at[i].set(val)
             return acc_arr
@@ -293,37 +476,21 @@ class _FinDiffNonUniform(_FinDiffBase):
         dense build in the common path, leave this unimplemented for now.
         """
         raise NotImplementedError("Matrix assembly for non-uniform grids not implemented")
-#         multi_slice = [slice(None, None)] * ndims
-#         ref_multi_slice = [slice(None, None)] * ndims
 
-#         for i, _ in enumerate(self.coords):
-#             coefs = self.coef_list[i]
-#             ref_multi_slice[dim] = i
+    def tree_flatten(self):
+        """Flatten into (children, aux_data) for JAX pytree."""
+        children = (self.coords, self._all_coefficients, self._all_offsets)
+        aux_data = (self.axis, self.order, self.acc)
+        return children, aux_data
 
-#             for off, w in zip(coefs["offsets"], coefs["coefficients"]):
-#                 multi_slice[dim] = i + off
-#                 yd[tuple(ref_multi_slice)] += w * y[tuple(multi_slice)]
-
-#         return yd
-
-
-#     def write_matrix_entries(self, mat, shape):
-#         coords = self.coords
-
-#         short_inds = get_list_of_multiindex_tuples(shape)
-
-#         coef_dicts = []
-#         for i in range(len(coords)):
-#             coef_dicts.append(coefficients_non_uni(self.order, self.acc, coords, i))
-
-#         long_inds = get_long_indices_for_all_grid_points_as_ndarray(shape)
-#         for base_ind_long, base_ind_short in enumerate(short_inds):
-#             cd = coef_dicts[base_ind_short[self.axis]]
-#             cs, os = cd["coefficients"], cd["offsets"]
-#             for c, o in zip(cs, os):
-#                 off_short = jnp.zeros(len(shape), dtype=int)
-#                 off_short[self.axis] = int(o)
-#                 off_ind_short = jnp.array(base_ind_short, dtype=int) + off_short
-#                 off_long = long_inds[tuple(off_ind_short)]
-
-#                 mat[base_ind_long, off_long] += c
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        """Reconstruct from (children, aux_data)."""
+        axis, order, acc = aux_data
+        obj = object.__new__(cls)
+        _FinDiffBase.__init__(obj, axis, order)
+        obj.coords = children[0]
+        obj.acc = acc
+        obj._all_coefficients = children[1]
+        obj._all_offsets = children[2]
+        return obj

@@ -7,7 +7,6 @@ from hypothesis import strategies as st
 from fdx import Curl, Diff, Divergence, FinDiff, Gradient, Laplacian
 from fdx.grids import EquidistantAxis
 
-
 # Custom strategies for numerical values
 positive_floats = st.floats(
     min_value=0.01, max_value=10, allow_nan=False, allow_infinity=False

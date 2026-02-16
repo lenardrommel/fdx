@@ -24,7 +24,8 @@ def test_iterative_accuracy():
             DD = D * D
 
             f = x**8
-            func_f = lambda x: x**8
+            def func_f(x):
+                return x**8
             df = grad(func_f)
             ddf = grad(df)
 
