@@ -1,5 +1,6 @@
 """Finite-difference differentiators for uniform and non-uniform grids."""
 
+import equinox as eqx
 import jax
 from jax import lax
 from jax import numpy as jnp
@@ -66,13 +67,17 @@ def build_differentiator(order: int, axis: GridAxis, acc):
         raise TypeError("Unknown axis type.")
 
 
-class _FinDiffBase:
-    def __init__(self, axis, order, dtype=jnp.float64):
-        self.axis = axis
-        self.order = order
-        self._dtype = dtype
+class _FinDiffBase(eqx.Module):
+    """Base class for finite-difference differentiators.
+
+    Subclasses are automatically registered as JAX pytrees via ``eqx.Module``.
+    """
+
+    axis: int = eqx.field(static=True)
+    order: int = eqx.field(static=True)
 
     def guard_valid_target(self, f):
+        """Validate and cast the input array."""
         try:
             f.shape[self.axis]
         except AttributeError as err:
@@ -85,17 +90,7 @@ class _FinDiffBase:
         return f
 
     def apply_to_array(self, yd, y, weights, offsets, ref_start, ref_size, dim):
-        """Applies finite differences using JAX-compatible dynamic slicing.
-
-        Args:
-            yd: output array to accumulate into
-            y: input array
-            weights: coefficients for finite differences
-            offsets: offset indices for each stencil point
-            ref_start: starting index of reference region
-            ref_size: size of reference region
-            dim: axis along which to apply differences
-        """
+        """Apply finite differences using JAX-compatible dynamic slicing."""
         ndims = len(y.shape)
 
         for w, offset in zip(weights, offsets):
@@ -122,37 +117,47 @@ class _FinDiffBase:
         return yd
 
     def shift_slice(self, sl: slice, off: int, max_index: int) -> slice:
-        # if sl.start + off < 0 or sl.stop + off > max_index:
-        #     raise IndexError("Shift slice out of bounds")
+        """Shift a slice by an offset."""
         return slice(sl.start + off, sl.stop + off, sl.step)
 
     def matrix(self, shape):
+        """Return a dense matrix representation for a given field shape."""
         siz = int(jnp.prod(jnp.array(shape)))
         mat = jnp.zeros((siz, siz))
         mat = self.write_matrix_entries(mat, shape)
         return mat
 
     def write_matrix_entries(self, mat, shape):
+        """Write operator entries into a dense matrix."""
         raise NotImplementedError
 
 
-@jax.tree_util.register_pytree_node_class
 class _FinDiffUniform(_FinDiffBase):
+    """Finite-difference differentiator for uniform, non-periodic grids."""
+
+    spacing: jax.Array
+    acc: int = eqx.field(static=True)
+    forward: dict
+    backward: dict
+    center: dict
+
     def __init__(self, axis, order, spacing, acc):
-        super().__init__(axis, order)
+        self.axis = axis
+        self.order = order
         self.spacing = spacing
         self.acc = acc
         coef_schemes = coefficients(self.order, acc)
-
         self.forward = coef_schemes["forward"]
         self.backward = coef_schemes["backward"]
         self.center = coef_schemes["center"]
 
     def __call__(self, f):
+        """Apply the derivative to an input array."""
         f = self.guard_valid_target(f)
         return apply_fd(self, f)
 
     def _apply_impl(self, f):
+        """Core implementation: convolution for central, dynamic slicing for boundaries."""
         npts = int(f.shape[self.axis])
         fd = jnp.zeros_like(f)
         num_bndry_points = len(self.center["coefficients"]) // 2
@@ -245,6 +250,7 @@ class _FinDiffUniform(_FinDiffBase):
         return fd
 
     def write_matrix_entries(self, mat, shape):
+        """Assemble dense matrix entries using batched COO scatter."""
         long_indices_nd = get_long_indices_for_all_grid_points_as_ndarray(shape)
         h_inv = 1.0 / self.spacing**self.order
 
@@ -292,47 +298,28 @@ class _FinDiffUniform(_FinDiffBase):
             offsets_long.append(o_long)
         return offsets_long
 
-    def tree_flatten(self):
-        """Flatten into (children, aux_data) for JAX pytree."""
-        # Coefficients are JAX arrays → children
-        children = (
-            self.forward["coefficients"],
-            self.forward["offsets"],
-            self.backward["coefficients"],
-            self.backward["offsets"],
-            self.center["coefficients"],
-            self.center["offsets"],
-        )
-        aux_data = (self.axis, self.order, self.spacing, self.acc)
-        return children, aux_data
 
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        """Reconstruct from (children, aux_data)."""
-        axis, order, spacing, acc = aux_data
-        obj = object.__new__(cls)
-        _FinDiffBase.__init__(obj, axis, order)
-        obj.spacing = spacing
-        obj.acc = acc
-        obj.forward = {"coefficients": children[0], "offsets": children[1]}
-        obj.backward = {"coefficients": children[2], "offsets": children[3]}
-        obj.center = {"coefficients": children[4], "offsets": children[5]}
-        return obj
-
-
-@jax.tree_util.register_pytree_node_class
 class _FinDiffUniformPeriodic(_FinDiffBase):
+    """Finite-difference differentiator for uniform, periodic grids."""
+
+    spacing: jax.Array
+    acc: int = eqx.field(static=True)
+    coefs: dict
+
     def __init__(self, axis, order, spacing, acc):
-        super().__init__(axis, order)
+        self.axis = axis
+        self.order = order
         self.spacing = spacing
         self.acc = acc
         self.coefs = coefficients(self.order, acc)["center"]
 
     def __call__(self, f):
+        """Apply the derivative to an input array."""
         f = self.guard_valid_target(f)
         return apply_fd(self, f)
 
     def _apply_impl(self, f):
+        """Core implementation: circular pad + convolution."""
         weights = jnp.array(self.coefs["coefficients"], dtype=f.dtype)
         k = len(weights)
         half = k // 2
@@ -376,6 +363,7 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         return (fd * h_inv).astype(f.dtype)
 
     def write_matrix_entries(self, mat, shape):
+        """Assemble dense matrix entries using batched COO scatter."""
         Is = get_long_indices_for_all_grid_points_as_1d_array(shape)
         h_inv = 1 / self.spacing**self.order
 
@@ -403,28 +391,18 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         Is_off = jnp.ravel_multi_index(index_tuples.T, shape)
         return Is_off
 
-    def tree_flatten(self):
-        """Flatten into (children, aux_data) for JAX pytree."""
-        children = (self.coefs["coefficients"], self.coefs["offsets"])
-        aux_data = (self.axis, self.order, self.spacing, self.acc)
-        return children, aux_data
 
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        """Reconstruct from (children, aux_data)."""
-        axis, order, spacing, acc = aux_data
-        obj = object.__new__(cls)
-        _FinDiffBase.__init__(obj, axis, order)
-        obj.spacing = spacing
-        obj.acc = acc
-        obj.coefs = {"coefficients": children[0], "offsets": children[1]}
-        return obj
-
-
-@jax.tree_util.register_pytree_node_class
 class _FinDiffNonUniform(_FinDiffBase):
+    """Finite-difference differentiator for non-uniform, non-periodic grids."""
+
+    acc: int = eqx.field(static=True)
+    coords: jnp.ndarray
+    _all_coefficients: jnp.ndarray
+    _all_offsets: jnp.ndarray
+
     def __init__(self, axis, order, coords, acc):
-        super().__init__(axis, order)
+        self.axis = axis
+        self.order = order
         self.coords = coords
         self.acc = acc
 
@@ -476,21 +454,3 @@ class _FinDiffNonUniform(_FinDiffBase):
         dense build in the common path, leave this unimplemented for now.
         """
         raise NotImplementedError("Matrix assembly for non-uniform grids not implemented")
-
-    def tree_flatten(self):
-        """Flatten into (children, aux_data) for JAX pytree."""
-        children = (self.coords, self._all_coefficients, self._all_offsets)
-        aux_data = (self.axis, self.order, self.acc)
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        """Reconstruct from (children, aux_data)."""
-        axis, order, acc = aux_data
-        obj = object.__new__(cls)
-        _FinDiffBase.__init__(obj, axis, order)
-        obj.coords = children[0]
-        obj.acc = acc
-        obj._all_coefficients = children[1]
-        obj._all_offsets = children[2]
-        return obj
