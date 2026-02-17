@@ -1,8 +1,20 @@
 """Global configuration for finite-difference coefficient computations."""
 
+import jax
 from jax import numpy as jnp
 
 _dtype = jnp.float64
+
+
+def set_x64(enabled: bool) -> None:
+    """Enable or disable JAX 64-bit mode.
+
+    Parameters
+    ----------
+    enabled
+        Whether to enable 64-bit mode.
+    """
+    jax.config.update("jax_enable_x64", enabled)
 
 
 def set_dtype(dtype: jnp.dtype) -> None:

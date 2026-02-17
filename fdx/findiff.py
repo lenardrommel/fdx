@@ -14,8 +14,6 @@ from fdx.utils import (
     to_long_index,
 )
 
-jax.config.update("jax_enable_x64", True)
-
 
 @jax.custom_jvp
 def apply_fd(diff, f):
