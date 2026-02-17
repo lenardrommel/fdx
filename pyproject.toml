@@ -59,6 +59,13 @@ examples = [
     "matplotlib",
 ]
 
+# Documentation dependencies
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+]
+
 [tool.setuptools.packages.find]
 include = ["fdx*"]
 
@@ -73,7 +80,7 @@ testpaths = ["tests"]
 
 [tool.tox]
 requires = ["tox>=4.21"]
-env_list = ["fmt", "lint", "py311", "py312", "py313", "py314", "docs", "doctest"]
+env_list = ["fmt", "lint", "py311", "py312", "py313", "py314", "docs"]
 
 [tool.tox.env_run_base]
 wheel_build_env = ".pkg"
@@ -81,11 +88,8 @@ extras = ["test"]
 commands = [["pytest"]]
 
 [tool.tox.env.docs]
-deps = [
-    "sphinx",
-    "-r docs/requirements.txt",
-]
-commands = [["sphinx-build", "-M", "html", "docs/source", "docs/build/"]]
+extras = ["docs"]
+commands = [["mkdocs", "build", "--strict"]]
 
 [tool.tox.env.doctest]
 deps = [
