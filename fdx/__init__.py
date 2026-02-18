@@ -1,7 +1,8 @@
+# __init__.py
+
 """fdx: finite-difference operators for JAX arrays."""
 
-from ._version import __version__
-
+from fdx._version import __version__
 from fdx.coefs import coefficients
 from fdx.compatible import Coef, Coefficient, FinDiff, Id
 from fdx.config import set_dtype, set_x64
