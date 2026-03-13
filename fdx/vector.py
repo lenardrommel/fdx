@@ -14,6 +14,13 @@ class VectorOperator:
     Shall not be instantiated directly, but through the child classes.
     """
 
+    def _get_arg(self, arg: Any, axis: int) -> Any:
+        if isinstance(arg, (list, tuple)):
+            if len(arg) != getattr(self, "ndims", len(arg)):
+                raise ValueError(f"Argument length {len(arg)} does not match ndims")
+            return arg[axis]
+        return arg
+
     def __init__(self, **kwargs) -> None:
         """Constructor for the VectorOperator base class.
 
@@ -33,6 +40,8 @@ class VectorOperator:
         else:
             self.acc = 2
 
+        periodic = kwargs.pop("periodic", False)
+
         if "spac" in kwargs or "h" in kwargs:  # necessary for backward compatibility 0.5.2 => 0.6
             if "spac" in kwargs:
                 kw = "spac"
@@ -40,12 +49,28 @@ class VectorOperator:
                 kw = "h"
             self.h = kwargs.pop(kw)
             self.ndims = len(self.h)
-            self.components = [FinDiff(k, self.h[k], 1) for k in range(self.ndims)]
+            self.components = [
+                FinDiff(
+                    k,
+                    self.h[k],
+                    1,
+                    periodic=self._get_arg(periodic, k),
+                    acc=self._get_arg(self.acc, k),
+                    **{key: self._get_arg(val, k) for key, val in kwargs.items()}
+                ) for k in range(self.ndims)
+            ]
 
         if "coords" in kwargs:
             coords = kwargs.pop("coords")
             self.ndims = self.__get_dimension(coords)
-            self.components = [FinDiff((k, coords[k], 1), **kwargs) for k in range(self.ndims)]
+            self.components = [
+                FinDiff(
+                    (k, coords[k], 1),
+                    periodic=self._get_arg(periodic, k),
+                    acc=self._get_arg(self.acc, k),
+                    **{key: self._get_arg(val, k) for key, val in kwargs.items()}
+                ) for k in range(self.ndims)
+            ]
 
     def __get_dimension(self, coords: List[Array]) -> int:
         return len(coords)
@@ -105,7 +130,7 @@ class Gradient(VectorOperator):
 
                 # vmap over batch, compute full gradient on each sample
                 def grad_one(sample):
-                    parts = [comp(sample, acc=self.acc) for comp in self.components]  # each: (*spatial)
+                    parts = [comp(sample, acc=self._get_arg(self.acc, k)) for k, comp in enumerate(self.components)]  # each: (*spatial)
                     return jnp.stack(parts, axis=0)  # (ndims, *spatial)
 
                 return jax.vmap(grad_one)(f)  # (batch, ndims, *spatial)
@@ -114,7 +139,7 @@ class Gradient(VectorOperator):
             s_axis = int(axis) % self.ndims
 
             def deriv_one(sample):
-                return self.components[s_axis](sample, acc=self.acc)  # (*spatial)
+                return self.components[s_axis](sample, acc=self._get_arg(self.acc, s_axis))  # (*spatial)
 
             return jax.vmap(deriv_one)(f)  # (batch, *spatial)
 
@@ -122,11 +147,11 @@ class Gradient(VectorOperator):
         if axis is None:
             if f.ndim != self.ndims:
                 raise ValueError("Gradients can only be applied to scalar functions")
-            parts = [comp(f, acc=self.acc) for comp in self.components]
+            parts = [comp(f, acc=self._get_arg(self.acc, k)) for k, comp in enumerate(self.components)]
             return jnp.stack(parts, axis=0)  # (ndims, *spatial)
 
         s_axis = int(axis) % self.ndims
-        return self.components[s_axis](f, acc=self.acc)  # (*spatial)
+        return self.components[s_axis](f, acc=self._get_arg(self.acc, s_axis))  # (*spatial)
 
 
 class Divergence(VectorOperator):
@@ -175,7 +200,7 @@ class Divergence(VectorOperator):
         result = jnp.zeros(f.shape[1:])
 
         result = jnp.sum(
-            jnp.stack([self.components[k](f[k], acc=self.acc) for k in range(self.ndims)]),
+            jnp.stack([self.components[k](f[k], acc=self._get_arg(self.acc, k)) for k in range(self.ndims)]),
             axis=0,
         )
 
@@ -233,9 +258,9 @@ class Curl(VectorOperator):
 
         result = jnp.zeros(f.shape)
 
-        result = result.at[0].add(self.components[1](f[2], acc=self.acc) - self.components[2](f[1], acc=self.acc))
-        result = result.at[1].add(self.components[2](f[0], acc=self.acc) - self.components[0](f[2], acc=self.acc))
-        result = result.at[2].add(self.components[0](f[1], acc=self.acc) - self.components[1](f[0], acc=self.acc))
+        result = result.at[0].add(self.components[1](f[2], acc=self._get_arg(self.acc, 1)) - self.components[2](f[1], acc=self._get_arg(self.acc, 2)))
+        result = result.at[1].add(self.components[2](f[0], acc=self._get_arg(self.acc, 2)) - self.components[0](f[2], acc=self._get_arg(self.acc, 0)))
+        result = result.at[2].add(self.components[0](f[1], acc=self._get_arg(self.acc, 0)) - self.components[1](f[0], acc=self._get_arg(self.acc, 1)))
 
         return result
 
@@ -243,7 +268,7 @@ class Curl(VectorOperator):
 class Laplacian(VectorOperator):
     """N-dimensional Laplacian operator for scalar fields."""
 
-    def __init__(self, h: Optional[List[float]] = None, acc: int = 2) -> None:
+    def __init__(self, h: Optional[List[float]] = None, acc: Union[int, List[int]] = 2, periodic: Union[bool, List[bool]] = False) -> None:
         """Create a Laplacian operator.
 
         Parameters
@@ -251,13 +276,24 @@ class Laplacian(VectorOperator):
         h
             Grid spacings for a uniform grid. If not provided, defaults to `[1.0]`.
         acc
-            Accuracy order (positive integer).
+            Accuracy order (positive integer or list of integers).
+        periodic
+            Whether the domain is periodic (boolean or list of booleans).
         """
         h_list = h or [1.0]
         h_arr = wrap_in_ndarray(h_list)
 
-        self._parts = [FinDiff((k, h_arr[k], 2), acc=acc) for k in range(len(h_arr))]
-        super().__init__(h=h_arr, acc=acc)
+        ndims = len(h_arr)
+
+        def _get(arg, axis):
+            if isinstance(arg, (list, tuple)):
+                if len(arg) != ndims:
+                    raise ValueError(f"Argument length {len(arg)} does not match ndims")
+                return arg[axis]
+            return arg
+
+        self._parts = [FinDiff((k, h_arr[k], 2), acc=_get(acc, k), periodic=_get(periodic, k)) for k in range(ndims)]
+        super().__init__(h=h_arr, acc=acc, periodic=periodic)
 
     def __call__(self, f: Array) -> Array:
         """
@@ -327,7 +363,7 @@ class Jacobian(VectorOperator):
 
             def jac_one_component(field_1comp):
                 # field_1comp: (*S)
-                parts = [self.components[ax](field_1comp, acc=self.acc) for ax in range(self.ndims)]
+                parts = [self.components[ax](field_1comp, acc=self._get_arg(self.acc, ax)) for ax in range(self.ndims)]
                 return jnp.stack(parts, axis=0)  # (ndims, *S)
 
             # vmap over components, then over batch
@@ -348,7 +384,7 @@ class Jacobian(VectorOperator):
             u_flat = jnp.moveaxis(u_flat, -1, 0)  # (Cflat, *S)
 
             def jac_one_component(field_1comp):
-                parts = [self.components[ax](field_1comp, acc=self.acc) for ax in range(self.ndims)]
+                parts = [self.components[ax](field_1comp, acc=self._get_arg(self.acc, ax)) for ax in range(self.ndims)]
                 return jnp.stack(parts, axis=0)  # (ndims, *S)
 
             Jc = jax.vmap(jac_one_component)(u_flat)  # (Cflat, ndims, *S)

@@ -61,9 +61,11 @@ def build_differentiator(order: int, axis: GridAxis, acc):
         if not axis.periodic:
             return _FinDiffNonUniform(axis.dim, order, axis.coords, acc)
         else:
-            raise NotImplementedError("Periodic nonuniform axes not yet implemented")
+            msg = "Periodic nonuniform axes not yet implemented"
+            raise NotImplementedError(msg)
     else:
-        raise TypeError("Unknown axis type.")
+        msg = "Unknown axis type."
+        raise TypeError(msg)
 
 
 class _FinDiffBase(eqx.Module):
@@ -80,9 +82,11 @@ class _FinDiffBase(eqx.Module):
         try:
             f.shape[self.axis]
         except AttributeError as err:
-            raise ValueError(
-                "Diff objects can only be applied to arrays or evaluated(!) functions returning arrays"
-            ) from err
+            msg = (
+                "Diff objects can only be applied to arrays or evaluated(!) functions "
+                "returning arrays"
+            )
+            raise ValueError(msg) from err
 
         if jnp.issubdtype(f.dtype, jnp.integer):
             f = f.astype(jnp.float64)
@@ -452,4 +456,5 @@ class _FinDiffNonUniform(_FinDiffBase):
         For non-uniform grids, coefficients vary per row. To avoid a heavy
         dense build in the common path, leave this unimplemented for now.
         """
-        raise NotImplementedError("Matrix assembly for non-uniform grids not implemented")
+        msg = "Matrix assembly for non-uniform grids not implemented"
+        raise NotImplementedError(msg)

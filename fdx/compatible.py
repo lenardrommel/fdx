@@ -21,7 +21,11 @@ def FinDiff(*args, **kwargs):
         An operator expression that can be applied to arrays.
     """
     if len(args) > 3:
-        raise ValueError("FinDiff accepts not more than 3 positional arguments.")
+        msg = (
+            "FinDiff accepts not more than 3 positional arguments. "
+            "Use multiplication for mixed derivatives."
+        )
+        raise ValueError(msg)
 
     def diff_from_tuple(tpl):
         if len(tpl) == 3:
