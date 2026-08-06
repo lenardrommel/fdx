@@ -42,10 +42,6 @@ test = [
     "hypothesis>=6",
     "findiff",
 ]
-filterwarnings = [
-    "ignore:The 'repr' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
-    "ignore:The 'frozen' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
-]
 
 # Tooling fürs Entwickeln (Format/Lint/CI lokal)
 dev = [
@@ -77,6 +73,10 @@ write_to_template = "__version__ = \"{version}\"\n"
 [tool.pytest.ini_options]
 addopts = ["--strict-markers"]
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:The 'repr' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
+    "ignore:The 'frozen' attribute with value .* was provided to the Field\\(\\) function:UserWarning",
+]
 
 [tool.tox]
 requires = ["tox>=4.21"]
