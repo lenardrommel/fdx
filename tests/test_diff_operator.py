@@ -159,7 +159,7 @@ class TestDiffMultidimensional:
 
     def test_diff_2d_x_direction(self, small_grid_2d):
         """Test derivative in x direction on 2D grid."""
-        X, Y, dx, dy = small_grid_2d
+        X, Y, dx, _dy = small_grid_2d
         f = X**2 + Y**2
         d_dx = Diff(0, EquidistantAxis(0, dx), acc=4)
 
@@ -170,7 +170,7 @@ class TestDiffMultidimensional:
 
     def test_diff_2d_y_direction(self, small_grid_2d):
         """Test derivative in y direction on 2D grid."""
-        X, Y, dx, dy = small_grid_2d
+        X, Y, _dx, dy = small_grid_2d
         f = X**2 + Y**2
         d_dy = Diff(1, EquidistantAxis(1, dy), acc=4)
 
@@ -181,7 +181,7 @@ class TestDiffMultidimensional:
 
     def test_diff_2d_mixed_function(self, medium_grid_2d):
         """Test derivative on mixed 2D function."""
-        X, Y, dx, dy = medium_grid_2d
+        X, Y, dx, _dy = medium_grid_2d
         f = jnp.sin(X) * jnp.cos(Y)
         d_dx = Diff(0, EquidistantAxis(0, dx), acc=6)
 
@@ -255,9 +255,7 @@ class TestDiffPropertyBased:
 
     @settings(deadline=None, max_examples=50)
     @given(
-        coeff=st.floats(
-            min_value=-10, max_value=10, allow_nan=False, allow_infinity=False
-        ),
+        coeff=st.floats(min_value=-10, max_value=10, allow_nan=False, allow_infinity=False),
         power=st.integers(min_value=1, max_value=3),
     )
     def test_derivative_polynomial(self, coeff, power):

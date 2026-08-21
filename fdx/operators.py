@@ -7,7 +7,7 @@ without depending on external linear-operator packages.
 
 import numbers
 from abc import ABC, abstractmethod
-from typing import List, Optional, Union
+
 import jax
 from jax import numpy as jnp
 
@@ -23,7 +23,7 @@ class Expression(ABC):
     __array_priority__ = 100
 
     def __init__(self, *args, **kwargs) -> None:
-        self.children: List[Expression] = []  # type: ignore[name-defined]
+        self.children: list[Expression] = []  # type: ignore[name-defined]
 
     @abstractmethod
     def __call__(self, f, *args, **kwargs):
@@ -102,7 +102,7 @@ class Expression(ABC):
 class FieldOperator(Expression):
     """Pointwise multiplication operator."""
 
-    def __init__(self, value: Union[float, Array]) -> None:
+    def __init__(self, value: float | Array) -> None:
         super().__init__()
         self.value = value
 
@@ -270,7 +270,7 @@ class Diff(Expression):
 
     DEFAULT_ACC = 2
 
-    def __init__(self, dim, axis: Optional[GridAxis] = None, acc=DEFAULT_ACC):
+    def __init__(self, dim, axis: GridAxis | None = None, acc=DEFAULT_ACC):
         """Initializes a Diff instance.
 
         Parameters
@@ -286,7 +286,7 @@ class Diff(Expression):
         self.dim = dim
         self.acc = acc
         self._order = 1
-        self._axis: Optional[GridAxis] = None
+        self._axis: GridAxis | None = None
         self._differentiator = None
         self.set_axis(axis)
 
@@ -296,7 +296,7 @@ class Diff(Expression):
         if self.grid is not None:
             self.set_axis(self.grid.get_axis(self.dim))
 
-    def set_axis(self, axis: Optional[GridAxis]):
+    def set_axis(self, axis: GridAxis | None):
         """Set the underlying `GridAxis` and reset cached differentiator."""
         self._axis = axis
         self._differentiator = None

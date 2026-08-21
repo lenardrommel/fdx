@@ -5,6 +5,12 @@ import warnings
 import jax.numpy as jnp
 import pytest
 
+from fdx.config import set_x64
+
+# Enable float64 before test modules are imported so parametrized test data
+# and runtime computations see the same precision mode.
+set_x64(True)
+
 # Filter out Pydantic warnings from third-party dependencies
 warnings.filterwarnings(
     "ignore",

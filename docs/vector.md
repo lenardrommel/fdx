@@ -79,8 +79,8 @@ Exactly one of `h` or `coords` must be provided.
 ```python
 grad = Gradient(h=[dx, dy], acc=2)
 
-out = grad(f)                       # full gradient
-out_axis = grad(f, axis=0)          # only ∂f/∂x0
+out = grad(f)  # full gradient
+out_axis = grad(f, axis=0)  # only ∂f/∂x0
 out_batched = grad(fb, has_batch=True)
 ```
 
@@ -240,7 +240,7 @@ Jacobian(*, h=None, coords=None, acc=2, **kwargs)
 ```python
 J = Jacobian(h=[dx, dy])
 
-out = J(u)                     # no batch
+out = J(u)  # no batch
 out_b = J(ub, has_batch=True)  # batch
 ```
 
@@ -298,8 +298,8 @@ f = jnp.sin(X) * jnp.cos(Y)
 grad = Gradient(h=[dx, dy], acc=2)
 div = Divergence(h=[dx, dy], acc=2)
 
-g = grad(f)        # (2, nx, ny)
-d = div(g)         # (nx, ny)  (div of grad is Laplacian if consistent)
+g = grad(f)  # (2, nx, ny)
+d = div(g)  # (nx, ny)  (div of grad is Laplacian if consistent)
 ```
 
 ### Batched gradient

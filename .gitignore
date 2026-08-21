@@ -10,10 +10,16 @@
 !tests/
 !docs/
 !.gitignore
+!.github/
+!.github/**
 !.pre-commit-config.yaml
+!mypy.ini
+!mkdocs.yml
+!uv.lock
 !README.md
 !LICENSE
 !pyproject.toml
+!MANIFEST.in
 !setup.py
 !setup.cfg
 !setup.py
@@ -62,6 +68,7 @@ wheels/
 .installed.cfg
 *.egg
 _version_save.py
+fdx/_version.py
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -161,4 +168,3 @@ findiff/*
 # Visual Studio Code
 .vscode
 venv2
-

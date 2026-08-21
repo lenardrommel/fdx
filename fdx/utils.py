@@ -1,9 +1,11 @@
 """Index conversion helpers for reshaped finite-difference operators."""
 
 import itertools
-from typing import List, Sequence, Tuple
+import math
+from collections.abc import Sequence
 
 import jax.numpy as jnp
+
 from fdx.types import Array
 
 
@@ -32,7 +34,7 @@ def to_long_index(idx: Sequence[int], shape: Sequence[int]) -> int:
     return long_idx
 
 
-def to_index_tuple(long_idx: int, shape: Sequence[int]) -> Tuple[int, ...]:
+def to_index_tuple(long_idx: int, shape: Sequence[int]) -> tuple[int, ...]:
     """Convert a flattened (row-major) index to an N-D index tuple.
 
     Parameters
@@ -47,12 +49,14 @@ def to_index_tuple(long_idx: int, shape: Sequence[int]) -> Tuple[int, ...]:
     tuple[int, ...]
         N-D index tuple corresponding to `long_idx`.
     """
-    ndims = len(shape)
-    idx = jnp.zeros(ndims)
-    for k in range(ndims):
-        s = jnp.prod(shape[k + 1 :])
-        idx = idx.at[k].set(long_idx // s)
-        long_idx = long_idx - s * idx[k]
+    shape = tuple(int(s) for s in shape)
+    remainder = int(long_idx)
+    idx = []
+    for k in range(len(shape)):
+        stride = math.prod(shape[k + 1 :]) or 1
+        idx_k = remainder // stride
+        idx.append(idx_k)
+        remainder -= stride * idx_k
     return tuple(idx)
 
 
@@ -92,7 +96,7 @@ def get_long_indices_for_all_grid_points_as_1d_array(
     return jnp.arange(jnp.prod(jnp.array(shape)), dtype=jnp.int64)
 
 
-def get_list_of_multiindex_tuples(shape: Sequence[int]) -> List[Tuple[int, ...]]:
+def get_list_of_multiindex_tuples(shape: Sequence[int]) -> list[tuple[int, ...]]:
     """Return all N-D index tuples for a given shape.
 
     Parameters

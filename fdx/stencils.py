@@ -64,11 +64,11 @@ class StencilSet:
         typ_tuple = tuple(typ)
 
         stl = self.data[typ_tuple]
-        idx0 = jnp.array(idx0)
+        idx0 = tuple(int(idx) for idx in idx0)
         du = 0.0
         for o, c in stl.items():
-            idx = idx0 + o
-            du += c * u[tuple(idx)]
+            idx = tuple(base_idx + offset for base_idx, offset in zip(idx0, o, strict=False))
+            du += c * u[idx]
 
         return du
 
@@ -100,14 +100,20 @@ class StencilSet:
             long_index_for_char_pt = to_long_index(index_tuple_for_char_pt, self.shape)
 
             row = matrix[long_index_for_char_pt, :]
-            long_row_inds, long_col_inds = row.nonzero()
+            if row.ndim == 1:
+                long_col_inds = row.nonzero()[0]
+                row_values = row
+            else:
+                _, long_col_inds = row.nonzero()
+                row_values = row[0]
 
             for long_offset_ind in long_col_inds:
-                offset_ind_tuple = jnp.array(
-                    to_index_tuple(long_offset_ind, self.shape), dtype=int
+                offset_ind_tuple = to_index_tuple(int(long_offset_ind), self.shape)
+                relative_offset = tuple(
+                    offset_idx - base_idx
+                    for offset_idx, base_idx in zip(offset_ind_tuple, index_tuple_for_char_pt, strict=False)
                 )
-                offset_ind_tuple -= jnp.array(index_tuple_for_char_pt, dtype=int)
-                char_point_stencil[tuple(offset_ind_tuple)] = float(row[0, long_offset_ind])
+                char_point_stencil[relative_offset] = float(row_values[long_offset_ind])
 
     def _typical_index_tuple_for_char_point(self, pt):
         index_tuple_for_char_pt = []
@@ -124,7 +130,7 @@ class StencilSet:
         shape = self.shape
         ndim = len(shape)
         typ = [("L", "C", "H")] * ndim
-        return product(*typ)
+        return tuple(product(*typ))
 
 
 class Stencil:
@@ -187,7 +193,7 @@ class Stencil:
                 return self.apply_on_multi_slice(f, on)
             else:
                 return self.apply_on_mask(f, on)
-        raise Exception("Cannot specify both *at* and *on* parameters.")
+        raise ValueError("Cannot specify both *at* and *on* parameters.")
 
     def __str__(self):
         return str(self.values)
@@ -232,9 +238,7 @@ class Stencil:
             Array with stencil values accumulated on the sliced region.
         """
         result = jnp.zeros_like(f)
-        base_mslice = [
-            self._canonic_slice(sl, f.shape[axis]) for axis, sl in enumerate(on)
-        ]
+        base_mslice = [self._canonic_slice(sl, f.shape[axis]) for axis, sl in enumerate(on)]
 
         for off, coeff in self.values.items():
             off_mslice = list(base_mslice)
@@ -249,13 +253,14 @@ class Stencil:
 
     def _apply_at_single_point(self, f, at):
         result = 0.0
-        at = jnp.array(at)
+        if not hasattr(at, "__len__"):
+            at = (at,)
+        at = tuple(int(idx) for idx in at)
         for off, coeff in self.values.items():
-            off = jnp.array(off)
-            eval_at = at + off
-            if jnp.any(eval_at < 0) or not jnp.all(eval_at < f.shape):
-                raise Exception("Cannot evaluate outside of grid.")
-            result += coeff * f[tuple(eval_at)]
+            eval_at = tuple(base_idx + offset for base_idx, offset in zip(at, off, strict=False))
+            if any(idx < 0 or idx >= dim for idx, dim in zip(eval_at, f.shape, strict=False)):
+                raise IndexError("Cannot evaluate outside of grid.")
+            result += coeff * f[eval_at]
         return result
 
     def _make_offset_mask(self, mask, offset):
@@ -267,11 +272,11 @@ class Stencil:
                 sl_off = slice(None, None)
                 sl_base = slice(None, None)
             elif off_ > 0:
-                sl_off = slice(off_, None)
-                sl_base = slice(None, -off_)
+                sl_off = slice(None, -off_)
+                sl_base = slice(off_, None)
             else:
-                sl_off = slice(None, off_)
-                sl_base = slice(-off_, None)
+                sl_off = slice(-off_, None)
+                sl_base = slice(None, off_)
             mslice_off.append(sl_off)
             mslice_base.append(sl_base)
 
@@ -282,11 +287,11 @@ class Stencil:
     def _canonic_slice(self, sl: slice, length: int) -> slice:
         start = sl.start if sl.start is not None else 0
         if start < 0:
-            start = length - start
-        stop = sl.stop if sl.stop is not None else 0
+            start += length
+        stop = sl.stop if sl.stop is not None else length
         if stop < 0:
-            stop = length - start
-        return slice(start, stop)
+            stop += length
+        return slice(start, stop, sl.step)
 
     @property
     def values(self):
@@ -301,15 +306,14 @@ class Stencil:
     def _calc_accuracy(self):
         tol = 1.0e-6
         deriv_order = 0
-        for pows in self.partials.keys():
+        for pows in self.partials:
             order = sum(pows)
-            if order > deriv_order:
-                deriv_order = order
+            deriv_order = max(deriv_order, order)
         for order in range(deriv_order, deriv_order + 10):
             terms = self._multinomial_powers(order)
             for term in terms:
                 row = self._system_matrix_row(term)
-                resid = sum(float(s) * float(r) for s, r in zip(self.sol, row))
+                resid = sum(float(s) * float(r) for s, r in zip(self.sol, row, strict=False))
                 if abs(resid) > tol and term not in self.partials:
                     return order - deriv_order
 
@@ -321,14 +325,12 @@ class Stencil:
             if term in self.partials:
                 weight = self.partials[term]
                 multiplicity = jnp.prod(jnp.array([math.factorial(a) for a in term]))
-                vol = jnp.prod(
-                    jnp.array([self.spacings[j] ** term[j] for j in range(self.ndims)])
-                )
+                vol = jnp.prod(jnp.array([self.spacings[j] ** term[j] for j in range(self.ndims)]))
                 rhs[i] = weight * multiplicity / vol
 
         sol = jnp.linalg.solve(jnp.array(sys_matrix), jnp.array(rhs))
         assert len(sol) == len(self.offsets)
-        return sol, {off: coef for off, coef in zip(self.offsets, sol) if coef != 0}
+        return sol, {off: coef for off, coef in zip(self.offsets, sol, strict=False) if coef != 0}
 
     def _system_matrix(self):
         rows = []
@@ -343,7 +345,7 @@ class Stencil:
                     used_taylor_terms.pop()
                 if len(rows) == len(self.offsets):
                     return jnp.array(rows), used_taylor_terms
-        raise Exception("Not enough terms. Try to increase max_order.")
+        raise ValueError("Not enough terms. Try to increase max_order.")
 
     def _system_matrix_row(self, powers):
         row = []

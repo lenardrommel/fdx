@@ -2,7 +2,6 @@ import pytest
 from jax import numpy as jnp
 
 import fdx
-from findiff import FinDiff
 
 
 def assert_dict_almost_equal(first, second):
@@ -19,14 +18,14 @@ def test_findiff_should_raise_exception_when_applied_to_unevaluated_function():
     def f(x, y):
         return 5 * x**2 - 5 * x + 10 * y**2 - 10 * y  # pragma: no cover
 
-    d_dx = FinDiff(1, 0.01)
+    d_dx = fdx.FinDiff(1, 0.01)
     with pytest.raises(ValueError):
         d_dx(f)
 
 
 def test_matrix_representation_doesnt_work_for_order_greater_2_issue_24():
     x = jnp.zeros(10)
-    d3_dx3 = FinDiff((0, 1, 3))
+    d3_dx3 = fdx.FinDiff((0, 1, 3))
     mat = d3_dx3.matrix(x.shape)
 
     assert pytest.approx(mat[0, 0]) == -2.5
@@ -55,7 +54,7 @@ def test_matrix_repr_with_different_accs():
 def test_accuracy_should_be_passed_down_to_stencil():
     shape = 11, 11
     dx = 1.0
-    d1x = FinDiff(0, dx, 1, acc=4)
+    d1x = fdx.FinDiff(0, dx, 1, acc=4)
     stencil1 = d1x.stencil(shape)
 
     expected = {
@@ -125,7 +124,7 @@ def test_accuracy_should_be_passed_down_to_stencil():
         stl = stencil1.data[char_pt]
         assert_dict_almost_equal(expected[char_pt], stl)
 
-    d1x = FinDiff(0, dx, 1, acc=4)
+    d1x = fdx.FinDiff(0, dx, 1, acc=4)
     stencil1 = d1x.stencil(shape)
     for char_pt in stencil1.data:
         stl = stencil1.data[char_pt]
@@ -134,14 +133,6 @@ def test_accuracy_should_be_passed_down_to_stencil():
 
 def test_order_as_numpy_integer():
     order = jnp.ones(3, dtype=jnp.int32)[0]
-    d_dx = FinDiff(0, 0.1, order)  # raised an AssertionError with the bug
+    d_dx = fdx.FinDiff(0, 0.1, order)  # raised an AssertionError with the bug
 
-    jnp.allclose(d_dx(jnp.linspace(0, 1, 11)), jnp.ones(11))
-
-
-test_findiff_should_raise_exception_when_applied_to_unevaluated_function()
-test_matrix_representation_doesnt_work_for_order_greater_2_issue_24()
-test_high_accuracy_results_in_type_error()
-test_matrix_repr_with_different_accs()
-test_accuracy_should_be_passed_down_to_stencil()
-test_order_as_numpy_integer()
+    assert jnp.allclose(d_dx(jnp.linspace(0, 1, 11)), jnp.ones(11))

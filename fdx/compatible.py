@@ -21,18 +21,18 @@ def FinDiff(*args, **kwargs):
         An operator expression that can be applied to arrays.
     """
     if len(args) > 3:
-        msg = (
-            "FinDiff accepts not more than 3 positional arguments. "
-            "Use multiplication for mixed derivatives."
-        )
+        msg = "FinDiff accepts not more than 3 positional arguments. Use multiplication for mixed derivatives."
         raise ValueError(msg)
 
     def diff_from_tuple(tpl):
         if len(tpl) == 3:
             axis, h, order = tpl
+            axis = int(axis)
+            order = int(order)
             return Diff(axis, h, **kwargs) ** order
         elif len(tpl) == 2:
             axis, h = tpl
+            axis = int(axis)
             return Diff(axis, h, **kwargs)
 
     if isinstance(args[0], (list, tuple)):
@@ -53,8 +53,6 @@ class Coefficient(FieldOperator):
 
     Compatible alias with findiff's Coefficient; wraps FieldOperator.
     """
-
-    pass
 
 
 Coef = Coefficient

@@ -1,0 +1,9 @@
+# setuptools_scm already includes every git-tracked file in the sdist, so this
+# file only prunes what does not need to ship.
+
+# The README links the logo by its raw GitHub URL, so the 1.4 MB copy at the
+# repo root is dead weight in the sdist.
+exclude fdx_logo.png
+exclude .pre-commit-config.yaml
+exclude mypy.ini
+prune .github

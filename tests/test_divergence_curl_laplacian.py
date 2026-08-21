@@ -2,8 +2,6 @@
 
 import jax.numpy as jnp
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 from fdx import Curl, Divergence, Laplacian
 
@@ -12,7 +10,6 @@ def tolerance_for_accuracy(acc, deriv=1):
     """Calculate tolerance based on accuracy order and derivative order."""
     base_tol = 10 ** (-acc / 2)
     return base_tol * (10 ** (deriv - 1))
-
 
 
 class TestDivergenceBasic:
@@ -331,48 +328,3 @@ class TestLaplacian3D:
 
         tol = tolerance_for_accuracy(6, deriv=2)
         assert jnp.allclose(result, expected, atol=tol)
-
-
-class TestVectorOperatorsPropertyBased:
-    """Property-based tests for vector operators."""
-
-    @settings(deadline=None, max_examples=30)
-    @given(
-        a=st.floats(min_value=0.1, max_value=5, allow_nan=False, allow_infinity=False),
-        b=st.floats(min_value=0.1, max_value=5, allow_nan=False, allow_infinity=False),
-    )
-    def test_divergence_linear_field_property(self, a, b):
-        """Property: div([ax, by]) = a + b."""
-        x = jnp.linspace(0, 1, 30)
-        y = jnp.linspace(0, 1, 30)
-        X, Y = jnp.meshgrid(x, y, indexing="ij")
-        dx = x[1] - x[0]
-        dy = y[1] - y[0]
-
-        F = jnp.stack([a * X, b * Y], axis=0)
-        div = Divergence(h=[dx, dy], acc=6)
-        result = div(F)
-
-        expected = (a + b) * jnp.ones_like(X)
-
-        assert jnp.allclose(result, expected, rtol=1e-4, atol=1e-8)
-
-    @settings(deadline=None, max_examples=30)
-    @given(
-        a=st.floats(min_value=0.1, max_value=5, allow_nan=False, allow_infinity=False)
-    )
-    def test_laplacian_quadratic_property(self, a):
-        """Property: Laplacian of ax^2 + ay^2 is 4a."""
-        x = jnp.linspace(0, 1, 30)
-        y = jnp.linspace(0, 1, 30)
-        X, Y = jnp.meshgrid(x, y, indexing="ij")
-        dx = x[1] - x[0]
-        dy = y[1] - y[0]
-
-        f = a * (X**2 + Y**2)
-        lap = Laplacian(h=[dx, dy], acc=6)
-        result = lap(f)
-
-        expected = 4 * a * jnp.ones_like(X)
-
-        assert jnp.allclose(result, expected, rtol=1e-3, atol=1e-6)

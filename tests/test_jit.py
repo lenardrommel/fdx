@@ -2,15 +2,14 @@
 
 import jax
 import jax.numpy as jnp
-import pytest
 
 from fdx import Diff
 from fdx.grids import EquidistantAxis, NonEquidistantAxis
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_uniform_diff(n=100, acc=4):
     """Return (Diff, x, dx) on a uniform grid."""
@@ -39,11 +38,12 @@ def _make_periodic_diff(n=100, acc=4):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestJitUniform:
     """JIT with uniform grid Diff."""
 
     def test_jit_uniform_first_derivative(self):
-        d, x, dx = _make_uniform_diff()
+        d, x, _dx = _make_uniform_diff()
         f = jnp.sin(x)
 
         @jax.jit
@@ -58,7 +58,7 @@ class TestJitUniform:
         x = jnp.linspace(0, 2 * jnp.pi, 200)
         dx = x[1] - x[0]
         d = Diff(0, EquidistantAxis(0, dx), acc=4)
-        d2 = d ** 2
+        d2 = d**2
         f = jnp.sin(x)
 
         @jax.jit
@@ -106,7 +106,7 @@ class TestJitComposition:
     """JIT with composed operators."""
 
     def test_jit_multiply_composition(self):
-        d, x, dx = _make_uniform_diff()
+        d, x, _dx = _make_uniform_diff()
         d_composed = d * d  # second derivative via composition
         f = jnp.sin(x)
 
@@ -123,7 +123,7 @@ class TestPytreeRoundtrip:
     """Verify pytree flatten/unflatten preserves operator semantics."""
 
     def test_uniform_roundtrip(self):
-        d, x, dx = _make_uniform_diff()
+        d, x, _dx = _make_uniform_diff()
         f = jnp.sin(x)
 
         leaves, treedef = jax.tree_util.tree_flatten(d)

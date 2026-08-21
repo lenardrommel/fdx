@@ -24,8 +24,10 @@ def test_iterative_accuracy():
             DD = D * D
 
             f = x**8
+
             def func_f(x):
                 return x**8
+
             df = grad(func_f)
             ddf = grad(df)
 
@@ -64,5 +66,5 @@ def test_iterative_accuracy():
 
 
 def loglog_slope(x, y):
-    slope, intercept = jnp.polyfit(jnp.log(x), jnp.log(y), 1)
+    slope, _intercept = jnp.polyfit(jnp.log(x), jnp.log(y), 1)
     return slope
