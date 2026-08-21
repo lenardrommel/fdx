@@ -1,0 +1,58 @@
+site_name: fdx
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            show_source: true
+            show_root_heading: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Vector Operators: vector.md
+  - API Reference: reference.md

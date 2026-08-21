@@ -1,9 +1,8 @@
 """Grid and axis descriptors for finite-difference operators."""
 
-from typing import Dict, Optional, Union
-
 import jax
 from jax import numpy as jnp
+
 from fdx.types import Array
 
 
@@ -73,14 +72,14 @@ class Grid:
 
     def __init__(self, *axes: GridAxis) -> None:
         """Create a grid from axis descriptors."""
-        self.axes: Dict[int, GridAxis] = {ax.dim: ax for ax in axes}
+        self.axes: dict[int, GridAxis] = {ax.dim: ax for ax in axes}
 
-    def get_axis(self, dim: int) -> Optional[GridAxis]:
+    def get_axis(self, dim: int) -> GridAxis | None:
         """Return the axis descriptor for a given dimension."""
         return self.axes.get(int(dim))
 
 
-def make_grid(config_or_grid: Union[Grid, dict, None]) -> Optional[Grid]:
+def make_grid(config_or_grid: Grid | dict | None) -> Grid | None:
     """Makes or returns a grid based on configuration or an actual Grid instance.
 
     Historically, the API allowed to specify grid using a variety of
@@ -96,9 +95,7 @@ def make_grid(config_or_grid: Union[Grid, dict, None]) -> Optional[Grid]:
         axes = []
         for dim, ax_config in config.items():
             if isinstance(ax_config, dict):
-                ax = EquidistantAxis(
-                    dim, ax_config["h"], periodic=ax_config.get("periodic", False)
-                )
+                ax = EquidistantAxis(dim, ax_config["h"], periodic=ax_config.get("periodic", False))
             else:
                 ax = EquidistantAxis(dim, ax_config)
             axes.append(ax)
@@ -111,7 +108,7 @@ def make_grid(config_or_grid: Union[Grid, dict, None]) -> Optional[Grid]:
 
 def make_axis(
     dim: int,
-    config_or_axis: Union[GridAxis, float, int, jax.Array],
+    config_or_axis: GridAxis | float | jax.Array,
     periodic: bool = False,
 ) -> GridAxis:
     """Makes or returns a grid axis based on configuration or an actual GridAxis instance.
@@ -133,14 +130,9 @@ def make_axis(
                 return EquidistantAxis(dim, spacing=spacing[0], periodic=periodic)
             return NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
         else:
-            return EquidistantAxis(
-                dim, spacing=config_or_axis.item(), periodic=periodic
-            )
+            return EquidistantAxis(dim, spacing=config_or_axis.item(), periodic=periodic)
     else:
-        raise TypeError(
-            f"Unsupported axis type: {type(config_or_axis)}. "
-            "Expected GridAxis, number, or jax.Array."
-        )
+        raise TypeError(f"Unsupported axis type: {type(config_or_axis)}. Expected GridAxis, number, or jax.Array.")
     # elif isinstance(config_or_axis, Array):
     #     return NonEquidistantAxis(dim, coords=config_or_axis, periodic=periodic)
 

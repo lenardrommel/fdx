@@ -1,12 +1,13 @@
 """Finite-difference differentiators for uniform and non-uniform grids."""
 
 import math
+
 import equinox as eqx
 import jax
 from jax import lax
 from jax import numpy as jnp
 
-from fdx.coefs import coefficients, coefficients_non_uni, precompute_all_non_uni_coefficients
+from fdx.coefs import coefficients, precompute_all_non_uni_coefficients
 from fdx.grids import EquidistantAxis, GridAxis, NonEquidistantAxis
 from fdx.utils import (
     get_long_indices_for_all_grid_points_as_1d_array,
@@ -82,10 +83,7 @@ class _FinDiffBase(eqx.Module):
         try:
             f.shape[self.axis]
         except AttributeError as err:
-            msg = (
-                "Diff objects can only be applied to arrays or evaluated(!) functions "
-                "returning arrays"
-            )
+            msg = "Diff objects can only be applied to arrays or evaluated(!) functions returning arrays"
             raise ValueError(msg) from err
 
         if jnp.issubdtype(f.dtype, jnp.integer):
@@ -96,7 +94,7 @@ class _FinDiffBase(eqx.Module):
         """Apply finite differences using JAX-compatible dynamic slicing."""
         ndims = len(y.shape)
 
-        for w, offset in zip(weights, offsets):
+        for w, offset in zip(weights, offsets, strict=False):
             start_idx = ref_start + offset
 
             start_indices = jnp.asarray([0] * ndims)
@@ -182,9 +180,7 @@ class _FinDiffUniform(_FinDiffBase):
         ref_start = npts - num_bndry_points
         ref_size = num_bndry_points
 
-        return self.apply_to_array(
-            fd, f, weights, offsets, ref_start, ref_size, self.axis
-        )
+        return self.apply_to_array(fd, f, weights, offsets, ref_start, ref_size, self.axis)
 
     def _apply_forward_coefs(self, f, fd, npts, num_bndry_points):
         weights = self.forward["coefficients"]
@@ -193,9 +189,7 @@ class _FinDiffUniform(_FinDiffBase):
         ref_start = 0
         ref_size = num_bndry_points
 
-        return self.apply_to_array(
-            fd, f, weights, offsets, ref_start, ref_size, self.axis
-        )
+        return self.apply_to_array(fd, f, weights, offsets, ref_start, ref_size, self.axis)
 
     def _apply_central_conv(self, f, fd, npts, num_bndry_points):
         """Apply central FD stencil via JAX 1D convolution (single XLA op)."""
@@ -244,9 +238,7 @@ class _FinDiffUniform(_FinDiffBase):
 
         fd_t = jnp.transpose(fd, perm)
         fd_flat = fd_t.reshape(batch_size, spatial_n)
-        fd_flat = fd_flat.at[:, ref_start : ref_start + ref_size].set(
-            conv_result.astype(fd.dtype)
-        )
+        fd_flat = fd_flat.at[:, ref_start : ref_start + ref_size].set(conv_result.astype(fd.dtype))
 
         fd_t = fd_flat.reshape(orig_shape)
         fd = jnp.transpose(fd_t, inv_perm)
@@ -262,14 +254,12 @@ class _FinDiffUniform(_FinDiffBase):
         all_vals = []
 
         for scheme in ["center", "forward", "backward"]:
-            offsets_long = self._convert_1D_offsets_to_long_indices(
-                self.axis, getattr(self, scheme)["offsets"], shape
-            )
+            offsets_long = self._convert_1D_offsets_to_long_indices(self.axis, getattr(self, scheme)["offsets"], shape)
             multi_slice = self._get_multislice_for_scheme(self.axis, scheme, shape)
             Is = long_indices_nd[tuple(multi_slice)].reshape(-1)
             coefs = getattr(self, scheme)["coefficients"]
 
-            for o, c in zip(offsets_long, coefs):
+            for o, c in zip(offsets_long, coefs, strict=False):
                 all_rows.append(Is)
                 all_cols.append(Is + o)
                 all_vals.append(jnp.full_like(Is, c * h_inv, dtype=mat.dtype))
@@ -342,9 +332,7 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         f_flat = f_t.reshape(batch_size, spatial_n)
 
         # Circular pad along spatial axis
-        f_padded = jnp.concatenate(
-            [f_flat[:, -half:], f_flat, f_flat[:, :half]], axis=-1
-        )
+        f_padded = jnp.concatenate([f_flat[:, -half:], f_flat, f_flat[:, :half]], axis=-1)
 
         # lax.conv_general_dilated does cross-correlation, use coefficients directly
         f_conv_in = f_padded[:, None, :]  # (B, 1, N + 2*half)
@@ -374,7 +362,7 @@ class _FinDiffUniformPeriodic(_FinDiffBase):
         all_cols = []
         all_vals = []
 
-        for o, c in zip(self.coefs["offsets"], self.coefs["coefficients"]):
+        for o, c in zip(self.coefs["offsets"], self.coefs["coefficients"], strict=False):
             Is_off = self._get_offset_indices_long(o, shape)
             all_rows.append(Is)
             all_cols.append(Is_off)
@@ -425,7 +413,6 @@ class _FinDiffNonUniform(_FinDiffBase):
         The loop body is pure array operations with fixed shapes,
         making it fully traceable under ``jax.jit``.
         """
-
         # Move target axis to front for simpler indexing: (n, ...)
         y_m = jnp.moveaxis(y, self.axis, 0)
         n = y_m.shape[0]

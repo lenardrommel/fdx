@@ -1,5 +1,6 @@
 # test_vector.py
 
+import jax
 import pytest
 from jax import numpy as jnp
 
@@ -19,7 +20,7 @@ def _fd_atol(dx: float, acc: int, C: float = 10.0) -> float:
     Calculates absolute tolerance based on grid spacing and accuracy order.
     atol ~ O(dx^p) where p is the accuracy order.
     """
-    p = 2 if acc <= 2 else acc
+    p = max(2, acc)
     return C * float(dx) ** p
 
 
@@ -27,6 +28,12 @@ def _relative_l2_error(actual: jnp.ndarray, target: jnp.ndarray, eps: float = 1e
     num = jnp.linalg.norm(actual - target)
     den = jnp.linalg.norm(target)
     return float(num / (den + eps))
+
+
+def _make_batched_channel_field(X, Y, batch, channels, key):
+    a = jax.random.uniform(key, (batch, 1, 1, channels))
+    b = jax.random.uniform(key, (batch, 1, 1, channels))
+    return jnp.sin(a * X[None, ..., None] + b * Y[None, ..., None])
 
 
 def test_gradient_1d_sine_axis_derivative():
@@ -81,7 +88,7 @@ def test_gradient_2d_polynomial_full_gradient():
 def test_gradient_axis_uses_correct_spacing_regression(axis):
     # Distinct spacings to catch axis swaps
     x = jnp.linspace(0.0, 1.0, 101)  # dx ~ 0.01
-    y = jnp.linspace(0.0, 2.0, 51)   # dy ~ 0.04
+    y = jnp.linspace(0.0, 2.0, 51)  # dy ~ 0.04
     dx = x[1] - x[0]
     dy = y[1] - y[0]
 
@@ -189,15 +196,15 @@ def test_jacobian_2d_vector_field_shapes_and_values():
 
     # two "components" (like channels): u0 = sin(2x), u1 = cos(3y)
     # Using small coefficients to keep derivatives clean
-    u = jnp.stack([jnp.sin(2*X), jnp.cos(3*Y)], axis=-1)  # (nx, ny, 2)
+    u = jnp.stack([jnp.sin(2 * X), jnp.cos(3 * Y)], axis=-1)  # (nx, ny, 2)
 
     J = Jacobian(h=[dx, dy], acc=4)(u)  # (2, nx, ny, 2)
     assert J.shape == (2, nx, ny, 2)
 
     # ∂/∂x of [sin(2x), cos(3y)] = [2cos(2x), 0]
-    target_dx = jnp.stack([2*jnp.cos(2*X), jnp.zeros_like(X)], axis=-1)
+    target_dx = jnp.stack([2 * jnp.cos(2 * X), jnp.zeros_like(X)], axis=-1)
     # ∂/∂y of [sin(2x), cos(3y)] = [0, -3sin(3y)]
-    target_dy = jnp.stack([jnp.zeros_like(Y), -3*jnp.sin(3*Y)], axis=-1)
+    target_dy = jnp.stack([jnp.zeros_like(Y), -3 * jnp.sin(3 * Y)], axis=-1)
 
     sl = _interior_2d(2)
     atol = max(_fd_atol(dx, 4), _fd_atol(dy, 4))
@@ -225,12 +232,63 @@ def test_jacobian_matches_gradient_for_scalar_field():
     assert jnp.allclose(J[0, sl], G[0, sl], rtol=1e-10, atol=1e-10)
 
 
+def test_gradient_components_match_jacobian_for_batched_channels():
+    nx, ny = 64, 64
+    x = jnp.linspace(0.0, 1.0, nx)
+    y = jnp.linspace(0.0, 1.0, ny)
+    X, Y = jnp.meshgrid(x, y, indexing="ij")
+    dx = x[1] - x[0]
+    dy = y[1] - y[0]
+
+    field = _make_batched_channel_field(X, Y, batch=32, channels=13, key=jax.random.PRNGKey(0))
+
+    grad = Gradient(h=[dx, dy], acc=4)
+    jac = Jacobian(h=[dx, dy], acc=4)
+
+    grad_x = grad(field, axis=0, has_batch=True)
+    grad_y = grad(field, axis=1, has_batch=True)
+    grad_stacked = jnp.stack([grad_x, grad_y], axis=1)
+    jacobian = jac(field, has_batch=True)
+
+    assert jnp.allclose(grad_stacked, jacobian)
+
+
+def test_channel_reduction_matches_gradient_of_reduced_field():
+    nx, ny = 64, 64
+    x = jnp.linspace(0.0, 1.0, nx)
+    y = jnp.linspace(0.0, 1.0, ny)
+    X, Y = jnp.meshgrid(x, y, indexing="ij")
+    dx = x[1] - x[0]
+    dy = y[1] - y[0]
+    k1, k2 = jax.random.split(jax.random.PRNGKey(0), 2)
+
+    a = jax.random.uniform(k1, (32, 1, 1, 1))
+    b = jax.random.uniform(k2, (32, 1, 1, 1))
+    base = jnp.sin(a * X[None, ..., None] + b * Y[None, ..., None])
+    field = jnp.repeat(base, 13, axis=-1)
+    reduced = field.mean(axis=-1)
+
+    grad = Gradient(h=[dx, dy], acc=4)
+    jac = Jacobian(h=[dx, dy], acc=4)
+
+    grad_reduced = jnp.stack(
+        [
+            grad(reduced, axis=0, has_batch=True),
+            grad(reduced, axis=1, has_batch=True),
+        ],
+        axis=1,
+    )
+    jac_reduced = jac(field, has_batch=True).sum(axis=-1) / field.shape[-1]
+
+    assert jnp.allclose(grad_reduced, jac_reduced, rtol=1e-5, atol=1e-5)
+
+
 def test_vector_derivatives_numerical_stability_finite_outputs():
     # Stress test with high frequency relative to grid
     x = jnp.linspace(0.0, 2.0 * jnp.pi, 512)
     dx = x[1] - x[0]
     amp = 1.0e6
-    freq = 80.0 # Higher frequency to stress cancellation
+    freq = 80.0  # Higher frequency to stress cancellation
 
     f = amp * jnp.sin(freq * x)
 
@@ -245,11 +303,11 @@ def test_vector_derivatives_numerical_stability_finite_outputs():
     # With high frequency, error might be larger, so allow more slack
     # But mainly we want to ensure it doesn't blow up
     atol = _fd_atol(dx, 4, C=100.0)
-    assert rel_err_grad < atol or rel_err_grad < 0.1 # Fallback for high freq
+    assert rel_err_grad < atol or rel_err_grad < 0.1  # Fallback for high freq
 
     # Check Jacobian stability
     u = jnp.stack([f, 0.5 * f], axis=-1)  # (nx, 2)
-    J = Jacobian(h=[dx], acc=4)(u)        # (1, nx, 2)
+    J = Jacobian(h=[dx], acc=4)(u)  # (1, nx, 2)
 
     target_J = jnp.stack([target_df, 0.5 * target_df], axis=-1)
 

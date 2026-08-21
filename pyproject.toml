@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=77", "setuptools_scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,21 +9,20 @@ authors = [{ name = "Lenard Rommel" }]
 
 description = "A Python package for finite difference derivatives in JAX."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 
-# JAX + jaxlib require Python >= 3.11 (current releases) :contentReference[oaicite:1]{index=1}
 requires-python = ">=3.11"
 
 dependencies = [
     "jax",
-    "numpy",
     "equinox",
-    "pytest",
-    "scipy",
-    "sympy",
+    "jaxtyping",
 ]
 
 keywords = ["finite-differences", "numerical-derivatives", "scientific-computing"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -31,44 +30,52 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Mathematics",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Typing :: Typed",
 ]
 
+[project.urls]
+Homepage = "https://github.com/lenardrommel/fdx"
+Documentation = "https://lenardrommel.github.io/fdx/"
+Changelog = "https://github.com/lenardrommel/fdx/releases"
+Repository = "https://github.com/lenardrommel/fdx"
+Issues = "https://github.com/lenardrommel/fdx/issues"
+
 [project.optional-dependencies]
-# Alles fürs Testen/Validieren (dein Wunsch: hypothesis + findiff)
 test = [
     "pytest>=7",
     "hypothesis>=6",
-    "findiff",
 ]
 
-# Tooling fürs Entwickeln (Format/Lint/CI lokal)
 dev = [
     "ruff",
     "tox>=4.21",
     "pre-commit>=3.5.0",
 ]
 
-# Nur wenn man die Example-Skripte/Plots laufen lassen will
 examples = [
     "matplotlib",
 ]
 
-# Documentation dependencies
 docs = [
-    "mkdocs",
-    "mkdocs-material",
-    "mkdocstrings[python]",
+    # mkdocs 2.0 drops the plugin system these docs rely on.
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9",
+    "mkdocstrings[python]>=0.27",
 ]
 
 [tool.setuptools.packages.find]
 include = ["fdx*"]
 
+[tool.setuptools.package-data]
+fdx = ["py.typed"]
+
 [tool.setuptools_scm]
-# schreibt beim Build eine Datei mit __version__ rein
-write_to = "fdx/_version.py"
-write_to_template = "__version__ = \"{version}\"\n"
+# Writes the resolved version into the package at build time.
+version_file = "fdx/_version.py"
+version_file_template = "__version__ = \"{version}\"\n"
+# Lets a build succeed outside a git checkout (e.g. from an unpacked sdist).
+fallback_version = "0.0.0"
 
 [tool.pytest.ini_options]
 addopts = ["--strict-markers"]
@@ -126,8 +133,9 @@ extend-select = [
   "W",   # pycodestyle warnings
 ]
 ignore = [
-  "D105", # missing docstring in magic methods
-  "D401", # Imperative mood
+  "D105",   # missing docstring in magic methods
+  "D401",   # Imperative mood
+  "TRY004", # invalid arguments raise ValueError by convention here, not TypeError
 ]
 
 [tool.ruff.lint.pydocstyle]

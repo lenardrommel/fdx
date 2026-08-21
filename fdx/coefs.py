@@ -1,8 +1,10 @@
+# coefs.py
+
 """Finite-difference coefficient generation utilities."""
 
 import math
 from itertools import combinations
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from jax import lax
 from jax import numpy as jnp
@@ -14,11 +16,11 @@ from fdx.types import Array
 
 def coefficients(
     deriv: int,
-    acc: Optional[int] = None,
-    offsets: Optional[List[int]] = None,
+    acc: int | None = None,
+    offsets: list[int] | None = None,
     symbolic: bool = False,
     analytic_inv: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Compute finite-difference coefficients for a derivative order.
 
     Exactly one of `acc` and `offsets` must be provided.
@@ -50,9 +52,7 @@ def coefficients(
 
     if offsets:
         if deriv >= len(offsets):
-            raise ValueError(
-                f"can not compute derivative of order {deriv} using {len(offsets)} offsets."
-            )
+            raise ValueError(f"can not compute derivative of order {deriv} using {len(offsets)} offsets.")
         return compute_coeffs(deriv, offsets, analytic_inv)
 
     if acc is None:
@@ -85,9 +85,7 @@ def coefficients(
     return ret
 
 
-def coefficients_non_uni(
-    deriv: int, acc: int, coords: Array, idx: int
-) -> Dict[str, Array]:
+def coefficients_non_uni(deriv: int, acc: int, coords: Array, idx: int) -> dict[str, Array]:
     """Compute finite-difference coefficients on a non-uniform 1D grid.
 
     Parameters
@@ -153,9 +151,7 @@ def coefficients_non_uni(
     return ret
 
 
-def precompute_all_non_uni_coefficients(
-    deriv: int, acc: int, coords: Array
-) -> Dict[str, Array]:
+def precompute_all_non_uni_coefficients(deriv: int, acc: int, coords: Array) -> dict[str, Array]:
     """Precompute finite-difference coefficients for all non-uniform grid points.
 
     Returns padded arrays of uniform shape so they can be used inside
@@ -200,9 +196,7 @@ def precompute_all_non_uni_coefficients(
     return {"all_coefficients": all_coefficients, "all_offsets": all_offsets}
 
 
-def compute_coeffs(
-    deriv: int, offsets: List[int], analytic_inv: bool = False
-) -> Dict[str, Any]:
+def compute_coeffs(deriv: int, offsets: list[int], analytic_inv: bool = False) -> dict[str, Any]:
     """Compute coefficients for a fixed set of stencil offsets.
 
     Parameters
@@ -232,9 +226,7 @@ def compute_coeffs(
     return {"coefficients": coefs, "offsets": offsets, "accuracy": acc}
 
 
-def _build_matrix_non_uniform(
-    p: int, q: int, coords: Array, k: int, dtype: Any = _dtype
-) -> Array:
+def _build_matrix_non_uniform(p: int, q: int, coords: Array, k: int, dtype: Any = _dtype) -> Array:
     """Constructs the equation matrix for the finite difference coefficients of non-uniform grids at location k."""
     j_indices = jnp.arange(-p, q + 1)
 
@@ -249,9 +241,7 @@ def _build_matrix_non_uniform(
     return A.astype(dtype)
 
 
-def compute_inverse_Vandermonde(
-    column: int, offsets: List[int], dtype: Any = _dtype
-) -> Array:
+def compute_inverse_Vandermonde(column: int, offsets: list[int], dtype: Any = _dtype) -> Array:
     """Compute one column of the inverse Vandermonde system.
 
     Parameters
@@ -282,9 +272,7 @@ def compute_inverse_Vandermonde(
         # If the number of offsets matches the derivative order + 1, there is a special
         # case, compare the lower part of the bracket in the equation in proofwiki.
         for j in range(n):
-            denom = prod(minus(offsets[j], offsets[:j])) * prod(
-                minus(offsets[j], offsets[j + 1 :])
-            )
+            denom = prod(minus(offsets[j], offsets[:j])) * prod(minus(offsets[j], offsets[j + 1 :]))
             inv_vandermonde_column.append(1 / denom)
     else:
         # This is the "regular" part of the bracket. First compute the sign that is the
@@ -302,24 +290,23 @@ def compute_inverse_Vandermonde(
     return jnp.array(inv_vandermonde_column, dtype=dtype) * math.factorial(column)
 
 
-def _build_matrix(offsets: List[int], dtype: Any = _dtype) -> Array:
+def _build_matrix(offsets: list[int], dtype: Any = _dtype) -> Array:
     """Constructs the equation system matrix for the finite difference coefficients."""
     return jnp.vander(jnp.array(offsets), len(offsets), increasing=True).T.astype(dtype)
 
 
-def _build_rhs(offsets: List[int], deriv: int, dtype: Any = _dtype) -> Array:
+def _build_rhs(offsets: list[int], deriv: int, dtype: Any = _dtype) -> Array:
     """The right hand side of the equation system matrix."""
     b = jnp.zeros(len(offsets), dtype=dtype)
     b = b.at[deriv].set(math.factorial(deriv))
     return b
 
 
-def _calc_accuracy(
-    offsets: List[int], coefs: List[float], deriv: int, dtype: Any = _dtype
-) -> int:
+def _calc_accuracy(offsets: list[int], coefs: list[float], deriv: int, dtype: Any = _dtype) -> int:
     """Calculate accuracy using JAX-friendly operations."""
-    offsets = jnp.asarray(offsets)
-    coefs = jnp.asarray(coefs)
+    offsets_arr = jnp.asarray(offsets)
+    coefs_arr = jnp.asarray(coefs)
+    deriv_arr = jnp.asarray(deriv, dtype=offsets_arr.dtype)
 
     def cond_fun(state: tuple[int, bool]) -> Array:
         n, found = state
@@ -327,18 +314,18 @@ def _calc_accuracy(
 
     def body_fun(state: tuple[int, bool]) -> tuple[int, bool]:
         n, _ = state
-        powers = jnp.power(offsets, n)
-        b = jnp.sum(coefs * powers)
+        powers = jnp.power(offsets_arr, n)
+        b = jnp.sum(coefs_arr * powers)
         found = jnp.abs(b) > 1.0e-6
         return (n + 1, found)
 
-    init_state = (deriv + 1, False)
+    init_state = (deriv_arr + jnp.asarray(1, dtype=deriv_arr.dtype), jnp.asarray(False))
     final_n, found = lax.while_loop(cond_fun, body_fun, init_state)
 
     accuracy = lax.cond(
         found,
-        lambda n: n - deriv - 1,
-        lambda n: -1,
+        lambda n: n - deriv_arr - jnp.asarray(1, dtype=n.dtype),
+        lambda n: jnp.asarray(-1, dtype=n.dtype),
         final_n,
     )
 

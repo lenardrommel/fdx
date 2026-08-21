@@ -1,8 +1,13 @@
 <div align="center">
-  <img src="fdx_logo.png" alt="fdx logo" width="180" />
+  <img src="https://raw.githubusercontent.com/lenardrommel/fdx/main/fdx_logo.png" alt="fdx logo" width="180" />
 </div>
 
 # fdx — Finite Differences in JAX
+
+[![PyPI](https://img.shields.io/pypi/v/fdx.svg)](https://pypi.org/project/fdx/)
+[![Python versions](https://img.shields.io/pypi/pyversions/fdx.svg)](https://pypi.org/project/fdx/)
+[![CI](https://github.com/lenardrommel/fdx/actions/workflows/ci.yml/badge.svg)](https://github.com/lenardrommel/fdx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/lenardrommel/fdx/blob/main/LICENSE)
 
 fdx is a JAX-first reimplementation of key features from the excellent [findiff](https://github.com/maroba/findiff) package — providing finite-difference derivatives, vector calculus operators, and matrix/stencil representations, all compatible with JAX arrays and transformations.
 
@@ -21,11 +26,22 @@ If you need the full feature set (PDE solvers, boundary handling helpers, rich s
 
 ## Install
 
-fdx targets Python 3.8+ and requires JAX.
+fdx targets Python 3.11+.
 
 ```bash
-pip install jax  # or jax[cuda] for GPU
-pip install -e .
+pip install fdx
+```
+
+For accelerator-specific JAX installs such as CUDA or TPU builds, follow the
+official JAX installation guide first and then install `fdx`.
+
+To work on fdx itself:
+
+```bash
+git clone https://github.com/lenardrommel/fdx
+cd fdx
+pip install -e ".[test,dev,docs]"
+pytest
 ```
 
 ## Quickstart
@@ -36,15 +52,15 @@ Compute first and second derivatives on a uniform grid:
 import jax.numpy as jnp
 from fdx import Diff
 
-x = jnp.linspace(0, 2*jnp.pi, 100)
+x = jnp.linspace(0, 2 * jnp.pi, 100)
 dx = x[1] - x[0]
 f = jnp.sin(x)
 
 d_dx = Diff(0, grid=dx, acc=4)
-df = d_dx(f)                 # ≈ cos(x)
+df = d_dx(f)  # ≈ cos(x)
 
-d2_dx2 = d_dx ** 2           # second derivative along axis 0
-d2f = d2_dx2(f)              # ≈ -sin(x)
+d2_dx2 = d_dx**2  # second derivative along axis 0
+d2f = d2_dx2(f)  # ≈ -sin(x)
 ```
 
 Set periodicity or pass coordinates to use non-uniform grids:
@@ -62,18 +78,18 @@ d_dx_periodic = Diff(0, grid=dx, periodic=True, acc=6)
 import jax.numpy as jnp
 from fdx import Gradient, Laplacian
 
-x = jnp.linspace(0, 2*jnp.pi, 100)
-y = jnp.linspace(0, 2*jnp.pi, 120)
+x = jnp.linspace(0, 2 * jnp.pi, 100)
+y = jnp.linspace(0, 2 * jnp.pi, 120)
 dx = x[1] - x[0]
 dy = y[1] - y[0]
-X, Y = jnp.meshgrid(x, y, indexing='ij')
+X, Y = jnp.meshgrid(x, y, indexing="ij")
 f = jnp.sin(X) * jnp.cos(Y)
 
 grad = Gradient(h=[dx, dy], acc=6)
 gx, gy = grad(f)  # ∂f/∂x, ∂f/∂y
 
 lap = Laplacian(h=[dx, dy], acc=4)
-lf = lap(f)       # ∂²f/∂x² + ∂²f/∂y²
+lf = lap(f)  # ∂²f/∂x² + ∂²f/∂y²
 ```
 
 ## Examples
@@ -109,6 +125,7 @@ set_dtype(jnp.float32)  # use with care; may reduce accuracy
 Run the project’s tests:
 
 ```bash
+pip install -e ".[test]"
 pytest -q
 ```
 

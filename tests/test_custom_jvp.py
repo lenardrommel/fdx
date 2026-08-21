@@ -2,7 +2,6 @@
 
 import jax
 import jax.numpy as jnp
-import pytest
 
 from fdx import Diff
 from fdx.grids import EquidistantAxis, NonEquidistantAxis

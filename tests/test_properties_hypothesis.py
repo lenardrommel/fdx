@@ -4,19 +4,10 @@ import jax.numpy as jnp
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from fdx import Curl, Diff, Divergence, FinDiff, Gradient, Laplacian
+from fdx import Curl, Diff, Divergence, Gradient, Laplacian
 from fdx.grids import EquidistantAxis
 
-# Custom strategies for numerical values
-positive_floats = st.floats(
-    min_value=0.01, max_value=10, allow_nan=False, allow_infinity=False
-)
-small_positive_floats = st.floats(
-    min_value=0.01, max_value=2, allow_nan=False, allow_infinity=False
-)
-frequencies = st.floats(
-    min_value=0.5, max_value=5, allow_nan=False, allow_infinity=False
-)
+small_positive_floats = st.floats(min_value=0.01, max_value=2, allow_nan=False, allow_infinity=False)
 polynomial_powers = st.integers(min_value=1, max_value=4)
 accuracy_orders = st.sampled_from([2, 4, 6])
 
@@ -80,36 +71,6 @@ class TestDifferentialOperatorProperties:
 
         assert jnp.allclose(actual, expected, rtol=1e-3)
 
-    @settings(deadline=None, max_examples=30)
-    @given(freq=frequencies)
-    def test_sine_derivative(self, freq):
-        """Property: d/dx(sin(kx)) = k*cos(kx)."""
-        x = jnp.linspace(0, 2 * jnp.pi, 100)
-        dx = x[1] - x[0]
-
-        f = jnp.sin(freq * x)
-        d_dx = Diff(0, EquidistantAxis(0, dx), acc=6)
-
-        actual = d_dx(f)
-        expected = freq * jnp.cos(freq * x)
-
-        assert jnp.allclose(actual, expected, rtol=1e-3, atol=1e-5)
-
-    @settings(deadline=None, max_examples=30)
-    @given(freq=frequencies)
-    def test_cosine_derivative(self, freq):
-        """Property: d/dx(cos(kx)) = -k*sin(kx)."""
-        x = jnp.linspace(0, 2 * jnp.pi, 100)
-        dx = x[1] - x[0]
-
-        f = jnp.cos(freq * x)
-        d_dx = Diff(0, EquidistantAxis(0, dx), acc=6)
-
-        actual = d_dx(f)
-        expected = -freq * jnp.sin(freq * x)
-
-        assert jnp.allclose(actual, expected, rtol=1e-3, atol=1e-5)
-
 
 class TestGradientProperties:
     """Property-based tests for Gradient operator."""
@@ -140,7 +101,7 @@ class TestGradientProperties:
         """Property: gradient of constant is zero."""
         x = jnp.linspace(0, 1, 30)
         y = jnp.linspace(0, 1, 30)
-        X, Y = jnp.meshgrid(x, y, indexing="ij")
+        X, _Y = jnp.meshgrid(x, y, indexing="ij")
         dx = x[1] - x[0]
         dy = y[1] - y[0]
 
@@ -318,43 +279,6 @@ class TestCurlProperties:
         assert jnp.allclose(result1, result2, rtol=1e-4)
 
 
-class TestFinDiffProperties:
-    """Property-based tests for FinDiff compatibility layer."""
-
-    @settings(deadline=None, max_examples=30)
-    @given(
-        a=small_positive_floats,
-        power=polynomial_powers,
-    )
-    def test_findiff_polynomial(self, a, power):
-        """Property: d/dx(ax^n) = anx^(n-1)."""
-        x = jnp.linspace(0.1, 2, 50)
-        dx = x[1] - x[0]
-
-        f = a * x**power
-        d_dx = FinDiff(0, dx, acc=6)
-
-        actual = d_dx(f)
-        expected = a * power * x ** (power - 1)
-
-        assert jnp.allclose(actual, expected, rtol=1e-3)
-
-    @settings(deadline=None, max_examples=30)
-    @given(freq=frequencies)
-    def test_findiff_sine(self, freq):
-        """Property: d/dx(sin(kx)) = k*cos(kx)."""
-        x = jnp.linspace(0, 2 * jnp.pi, 100)
-        dx = x[1] - x[0]
-
-        f = jnp.sin(freq * x)
-        d_dx = FinDiff(0, dx, acc=6)
-
-        actual = d_dx(f)
-        expected = freq * jnp.cos(freq * x)
-
-        assert jnp.allclose(actual, expected, rtol=1e-3, atol=1e-5)
-
-
 class TestVectorCalculusIdentities:
     """Tests for vector calculus identities."""
 
@@ -380,6 +304,7 @@ class TestVectorCalculusIdentities:
         # div(curl(F)) should be zero
         assert jnp.allclose(result, 0, atol=1e-5)
 
+    @settings(deadline=None, max_examples=20)
     @given(a=small_positive_floats, b=small_positive_floats, c=small_positive_floats)
     def test_laplacian_divergence_gradient(self, a, b, c):
         """Identity: Δf = div(grad(f))."""

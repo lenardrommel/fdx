@@ -1,12 +1,14 @@
 """Vector calculus operators built from scalar finite differences."""
 
-from typing import Any, List, Optional, Union
+from typing import Any
 
 import jax
 from jax import numpy as jnp
 
-from .compatible import FinDiff
 from fdx.types import Array
+
+from .compatible import FinDiff
+
 
 class VectorOperator:
     """Base class for all vector differential operators.
@@ -56,8 +58,9 @@ class VectorOperator:
                     1,
                     periodic=self._get_arg(periodic, k),
                     acc=self._get_arg(self.acc, k),
-                    **{key: self._get_arg(val, k) for key, val in kwargs.items()}
-                ) for k in range(self.ndims)
+                    **{key: self._get_arg(val, k) for key, val in kwargs.items()},
+                )
+                for k in range(self.ndims)
             ]
 
         if "coords" in kwargs:
@@ -68,11 +71,12 @@ class VectorOperator:
                     (k, coords[k], 1),
                     periodic=self._get_arg(periodic, k),
                     acc=self._get_arg(self.acc, k),
-                    **{key: self._get_arg(val, k) for key, val in kwargs.items()}
-                ) for k in range(self.ndims)
+                    **{key: self._get_arg(val, k) for key, val in kwargs.items()},
+                )
+                for k in range(self.ndims)
             ]
 
-    def __get_dimension(self, coords: List[Array]) -> int:
+    def __get_dimension(self, coords: list[Array]) -> int:
         return len(coords)
 
 
@@ -99,7 +103,7 @@ class Gradient(VectorOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def __call__(self, f: Array, axis: Optional[int] = None, has_batch: bool = False) -> Array:
+    def __call__(self, f: Array, axis: int | None = None, has_batch: bool = False) -> Array:
         """
         Applies the N-dimensional gradient to the array f.
 
@@ -130,7 +134,9 @@ class Gradient(VectorOperator):
 
                 # vmap over batch, compute full gradient on each sample
                 def grad_one(sample):
-                    parts = [comp(sample, acc=self._get_arg(self.acc, k)) for k, comp in enumerate(self.components)]  # each: (*spatial)
+                    parts = [
+                        comp(sample, acc=self._get_arg(self.acc, k)) for k, comp in enumerate(self.components)
+                    ]  # each: (*spatial)
                     return jnp.stack(parts, axis=0)  # (ndims, *spatial)
 
                 return jax.vmap(grad_one)(f)  # (batch, ndims, *spatial)
@@ -258,9 +264,18 @@ class Curl(VectorOperator):
 
         result = jnp.zeros(f.shape)
 
-        result = result.at[0].add(self.components[1](f[2], acc=self._get_arg(self.acc, 1)) - self.components[2](f[1], acc=self._get_arg(self.acc, 2)))
-        result = result.at[1].add(self.components[2](f[0], acc=self._get_arg(self.acc, 2)) - self.components[0](f[2], acc=self._get_arg(self.acc, 0)))
-        result = result.at[2].add(self.components[0](f[1], acc=self._get_arg(self.acc, 0)) - self.components[1](f[0], acc=self._get_arg(self.acc, 1)))
+        result = result.at[0].add(
+            self.components[1](f[2], acc=self._get_arg(self.acc, 1))
+            - self.components[2](f[1], acc=self._get_arg(self.acc, 2))
+        )
+        result = result.at[1].add(
+            self.components[2](f[0], acc=self._get_arg(self.acc, 2))
+            - self.components[0](f[2], acc=self._get_arg(self.acc, 0))
+        )
+        result = result.at[2].add(
+            self.components[0](f[1], acc=self._get_arg(self.acc, 0))
+            - self.components[1](f[0], acc=self._get_arg(self.acc, 1))
+        )
 
         return result
 
@@ -268,7 +283,9 @@ class Curl(VectorOperator):
 class Laplacian(VectorOperator):
     """N-dimensional Laplacian operator for scalar fields."""
 
-    def __init__(self, h: Optional[List[float]] = None, acc: Union[int, List[int]] = 2, periodic: Union[bool, List[bool]] = False) -> None:
+    def __init__(
+        self, h: list[float] | None = None, acc: int | list[int] = 2, periodic: bool | list[bool] = False
+    ) -> None:
         """Create a Laplacian operator.
 
         Parameters
@@ -392,7 +409,7 @@ class Jacobian(VectorOperator):
             return J.reshape(self.ndims, *spatial_shape, *comp_shape)
 
 
-def wrap_in_ndarray(value: Union[Array, List[float]]) -> Array:
+def wrap_in_ndarray(value: Array | list[float]) -> Array:
     """Wraps the argument in a numpy.ndarray.
 
     If value is a scalar, it is converted in a list first.

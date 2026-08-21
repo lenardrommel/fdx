@@ -1,9 +1,8 @@
 """Tests that vector.py operators preserve float64 precision."""
 
 import jax.numpy as jnp
-import pytest
 
-from fdx import Gradient, Divergence, Curl, Laplacian, Jacobian
+from fdx import Curl, Divergence, Gradient, Jacobian, Laplacian
 
 
 def _interior(width=3):
@@ -45,7 +44,7 @@ class TestGradientFloat64:
         y = jnp.linspace(0.0, 1.0, 64, dtype=jnp.float64)
         dx, dy = x[1] - x[0], y[1] - y[0]
         X, Y = jnp.meshgrid(x, y, indexing="ij")
-        f = X ** 2 + Y ** 2
+        f = X**2 + Y**2
 
         result = Gradient(h=[dx, dy], acc=4)(f)
         assert result.dtype == jnp.float64
@@ -102,7 +101,7 @@ class TestCurlFloat64:
         n = 32
         x = jnp.linspace(0.0, 1.0, n, dtype=jnp.float64)
         dx = x[1] - x[0]
-        X, Y, Z = jnp.meshgrid(x, x, x, indexing="ij")
+        X, Y, _Z = jnp.meshgrid(x, x, x, indexing="ij")
 
         # F = (Y, -X, 0) => curl(F) = (0, 0, -2)
         F = jnp.stack([Y, -X, jnp.zeros_like(X)], axis=0)
@@ -113,7 +112,7 @@ class TestCurlFloat64:
         n = 32
         x = jnp.linspace(0.0, 1.0, n, dtype=jnp.float64)
         dx = x[1] - x[0]
-        X, Y, Z = jnp.meshgrid(x, x, x, indexing="ij")
+        X, Y, _Z = jnp.meshgrid(x, x, x, indexing="ij")
 
         # F = (Y, -X, 0) => curl(F) = (0, 0, -2)
         F = jnp.stack([Y, -X, jnp.zeros_like(X)], axis=0)
@@ -150,7 +149,7 @@ class TestLaplacianFloat64:
         dx, dy = x[1] - x[0], y[1] - y[0]
         X, Y = jnp.meshgrid(x, y, indexing="ij")
 
-        f = X ** 3 + Y ** 3  # Laplacian = 6X + 6Y
+        f = X**3 + Y**3  # Laplacian = 6X + 6Y
         result = Laplacian(h=[dx, dy], acc=4)(f)
         expected = 6.0 * X + 6.0 * Y
         sl = _interior_2d()

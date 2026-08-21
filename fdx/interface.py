@@ -1,8 +1,10 @@
 """Public interface wrappers for the finite-difference expression system."""
 
 import jax
+
 from fdx.grids import make_axis
-from fdx.operators import Diff as _Diff, Expression
+from fdx.operators import Diff as _Diff
+from fdx.operators import Expression
 
 
 @jax.tree_util.register_pytree_node_class
@@ -25,7 +27,7 @@ class Diff(_Diff):
             >>> f = jnp.sin(x) # as an example
 
         Define the first derivative:
-            >>> from findiff import Diff
+            >>> from fdx import Diff
             >>> d_dx = Diff(0)
             >>> d_dx.set_grid({0: x[1] - x[0]})
 
@@ -69,4 +71,3 @@ class Diff(_Diff):
         obj._axis = axis
         obj._differentiator = children[0] if children else None
         return obj
-

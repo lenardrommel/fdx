@@ -115,9 +115,7 @@ class TestCoefficientsUniform:
 
         expected_center = jnp.array([1 / 12, -2 / 3, 0, 2 / 3, -1 / 12])
         assert jnp.allclose(c["center"]["coefficients"], expected_center, atol=1e-6)
-        assert jnp.allclose(
-            c["center"]["offsets"], jnp.array([-2, -1, 0, 1, 2]), atol=1e-6
-        )
+        assert jnp.allclose(c["center"]["offsets"], jnp.array([-2, -1, 0, 1, 2]), atol=1e-6)
 
 
 class TestCoefficientsNonUniform:
